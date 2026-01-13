@@ -1,0 +1,544 @@
+import time
+import numpy as np
+import pandas as pd
+import streamlit as st
+import matplotlib.pyplot as plt
+
+import model
+from sim_runner import run_scenario
+from auth import require_password
+require_password()
+
+
+st.set_page_config(page_title="Policy recommendation", layout="wide")
+st.title("Policy recommendation")
+
+defaults = model.build_defaults()
+SPECIES_DISPLAY = {"muntjac": "Muntjac", "roe": "Roe", "fallow": "Fallow"}
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def _plot_abundance(year, totals_stats_by_candidate):
+    fig, ax = plt.subplots()
+    for cand_label, totals_stats in totals_stats_by_candidate:
+        ax.plot(year, totals_stats["all_total"]["mean"], label=cand_label)
+    ax.set_title("All-species total abundance — top 3 candidates")
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Abundance")
+    ax.set_ylim(bottom=0.0)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def _plot_series(year, series_by_candidate, title, ylabel):
+    fig, ax = plt.subplots()
+    for cand_label, s in series_by_candidate:
+        ax.plot(year, s["mean"], label=cand_label)
+    ax.set_title(title)
+    ax.set_xlabel("Year")
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(bottom=0.0)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def _binding_flags(df_cull_last_draw: pd.DataFrame | None, caps: dict[str, float], annual_budget_total: float | None) -> dict:
+    if df_cull_last_draw is None or df_cull_last_draw.empty:
+        return {"budget_binding": False, "cap_binding_muntjac": False, "cap_binding_roe": False, "cap_binding_fallow": False}
+
+    out = {}
+    # Budget binding is already provided by the model
+    if "budget_binding" in df_cull_last_draw.columns:
+        out["budget_binding"] = bool(df_cull_last_draw["budget_binding"].fillna(False).any())
+    else:
+        if annual_budget_total is None or annual_budget_total <= 0:
+            out["budget_binding"] = False
+        else:
+            out["budget_binding"] = bool((df_cull_last_draw["cost_total_all"] >= 0.999 * annual_budget_total).any())
+
+    # Cap binding (approx): realised close to cap in any year
+    for sp in model.SPECIES:
+        col = f"{sp}_realised"
+        cap = float(caps.get(sp, 0.0))
+        if cap <= 0 or col not in df_cull_last_draw.columns:
+            out[f"cap_binding_{sp}"] = False
+        else:
+            out[f"cap_binding_{sp}"] = bool((df_cull_last_draw[col] >= 0.999 * cap).any())
+
+    return out
+
+
+def _plan_table_for_species(plan: dict, sp: str) -> pd.DataFrame:
+    """
+    Returns a human-readable table:
+      rows: Year
+      cols: STATE_LABELS
+      cell: "mean (lo–hi)"
+    """
+    years = plan["year"]
+    out = {"Year": years}
+    for lab in model.STATE_LABELS:
+        m = plan[sp][lab]["mean"]
+        lo = plan[sp][lab]["lo"]
+        hi = plan[sp][lab]["hi"]
+        out[lab] = [f"{m[i]:.1f} ({lo[i]:.1f}–{hi[i]:.1f})" for i in range(len(years))]
+    return pd.DataFrame(out)
+
+
+def _plan_csv_for_species(plan: dict, sp: str, which: str) -> pd.DataFrame:
+    """
+    which in {"mean","lo","hi"}; returns numeric table for download.
+    """
+    years = plan["year"]
+    out = {"year": years}
+    for lab in model.STATE_LABELS:
+        out[lab] = plan[sp][lab][which]
+    return pd.DataFrame(out)
+
+
+# -----------------------------
+# Score priorities UI
+# -----------------------------
+st.subheader("Score priorities")
+st.caption(
+    "Priorities are applied to normalised score components. To keep this interpretable, you can use defaults or make small relative adjustments."
+)
+
+sk = defaults["score_kwargs"]
+
+mode = st.radio(
+    "Weight setting",
+    ["Use default priorities", "Adjust priorities (relative to defaults)"],
+    index=0,
+)
+
+priority_levels = ["Very low priority", "Low priority", "Medium priority", "High priority", "Very high priority"]
+priority_mult = {
+    "Very low priority": 0.70,
+    "Low priority": 0.85,
+    "Medium priority": 1.00,
+    "High priority": 1.15,
+    "Very high priority": 1.30,
+}
+
+if mode == "Use default priorities":
+    w_cull = float(sk["w_cull"])
+    w_time = float(sk["w_time"])
+    w_steady = float(sk["w_steady"])
+    w_cost = float(sk["w_cost"])
+else:
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        p_cull = st.selectbox("Cull", priority_levels, index=2)
+    with c2:
+        p_time = st.selectbox("Time to stabilise", priority_levels, index=2)
+    with c3:
+        p_steady = st.selectbox("Steady-state deviation", priority_levels, index=2)
+    with c4:
+        p_cost = st.selectbox("Cost", priority_levels, index=2)
+
+    w_cull = float(sk["w_cull"]) * priority_mult[p_cull]
+    w_time = float(sk["w_time"]) * priority_mult[p_time]
+    w_steady = float(sk["w_steady"]) * priority_mult[p_steady]
+    w_cost = float(sk["w_cost"]) * priority_mult[p_cost]
+
+# NOTE: we intentionally do NOT display the effective weights on this page.
+
+# Stability settings are intentionally frozen to defaults for comparability
+stable_tol_rel = float(sk["stable_tol_rel"])
+stable_window = int(sk["stable_window"])
+late_window = int(sk["late_window"])
+
+score_kwargs_override = dict(
+    w_cull=float(w_cull),
+    w_time=float(w_time),
+    w_steady=float(w_steady),
+    w_cost=float(w_cost),
+    stable_tol_rel=float(stable_tol_rel),
+    stable_window=int(stable_window),
+    late_window=int(late_window),
+)
+
+st.markdown("---")
+
+# -----------------------------
+# Frozen controls
+# -----------------------------
+st.subheader("Fixed scenario controls")
+st.caption("These settings are held fixed. The optimiser searches over the management controls below.")
+
+colA, colB, colC = st.columns(3)
+
+utt = defaults["uttlesford_totals"]
+with colA:
+    years = st.slider("Years", 3, 50, 10, 1)
+    rho = st.slider("Max cull fraction per class (rho)", 0.0, 0.5, 0.30, 0.01)
+
+with colB:
+    use_utt = st.checkbox("Use Uttlesford abundance estimates", value=True)
+    if use_utt:
+        init_tuple = (float(utt["muntjac"]), float(utt["roe"]), float(utt["fallow"]))
+        st.caption(f"Initial: Muntjac={init_tuple[0]:.0f}, Roe={init_tuple[1]:.0f}, Fallow={init_tuple[2]:.0f}")
+    else:
+        n0_m = st.number_input("Initial Muntjac", min_value=0.0, value=float(utt["muntjac"]), step=10.0)
+        n0_r = st.number_input("Initial Roe", min_value=0.0, value=float(utt["roe"]), step=10.0)
+        n0_f = st.number_input("Initial Fallow", min_value=0.0, value=float(utt["fallow"]), step=10.0)
+        init_tuple = (float(n0_m), float(n0_r), float(n0_f))
+
+with colC:
+    budget_enabled = st.checkbox("Enable annual budget cap", value=True)
+    annual_budget_total = None
+    if budget_enabled:
+        annual_budget_total = st.number_input(
+            "Annual budget cap (£)",
+            min_value=0.0,
+            value=float(defaults["ANNUAL_BUDGET_TOTAL"]),
+            step=1000.0,
+        )
+
+st.markdown("**Targets (post-cull population totals)**")
+tcol1, tcol2, tcol3 = st.columns(3)
+dt = defaults["default_targets_total"]
+with tcol1:
+    target_m = st.number_input("Target Muntjac", min_value=0.0, value=float(dt["muntjac"]), step=10.0)
+with tcol2:
+    target_r = st.number_input("Target Roe", min_value=0.0, value=float(dt["roe"]), step=10.0)
+with tcol3:
+    target_f = st.number_input("Target Fallow", min_value=0.0, value=float(dt["fallow"]), step=10.0)
+
+targets_tuple = (float(target_m), float(target_r), float(target_f))
+
+st.markdown("**Biology mode**")
+bio_mode = st.selectbox("Biology mode", ["fixed", "ensemble"], index=0)
+n_draws = 1
+if bio_mode == "ensemble":
+    n_draws = st.slider("Ensemble draws", 1, 50, 15, 1)
+else:
+    st.caption("Fixed biology: single run per candidate.")
+
+st.markdown("---")
+
+# -----------------------------
+# Optimised controls + search space
+# -----------------------------
+st.subheader("Management controls (optimised)")
+
+policies = list(defaults["weight_scenarios"].keys())
+default_policy = "Female priority, no juveniles"
+default_policy_index = policies.index(default_policy) if default_policy in policies else 0
+
+col1, col2 = st.columns(2)
+with col1:
+    optimise_policy = st.checkbox("Optimise cull policy", value=True)
+    if not optimise_policy:
+        fixed_policy = st.selectbox("Cull policy (fixed)", policies, index=default_policy_index)
+
+with col2:
+    optimise_intensity = st.checkbox("Optimise cull intensity", value=True)
+    if not optimise_intensity:
+        fixed_intensity = st.slider("Cull intensity (fixed)", 0.0, 1.0, 1.0, 0.05)
+
+st.markdown("**Annual cull caps per species bounds**")
+dcaps = defaults["ANNUAL_CULL_LIMITS"]
+b1, b2, b3 = st.columns(3)
+with b1:
+    cap_m_min = st.number_input("Muntjac cap min", min_value=0.0, value=0.0, step=10.0)
+    cap_m_max = st.number_input("Muntjac cap max", min_value=0.0, value=float(dcaps["muntjac"]), step=10.0)
+with b2:
+    cap_r_min = st.number_input("Roe cap min", min_value=0.0, value=0.0, step=10.0)
+    cap_r_max = st.number_input("Roe cap max", min_value=0.0, value=float(dcaps["roe"]), step=10.0)
+with b3:
+    cap_f_min = st.number_input("Fallow cap min", min_value=0.0, value=0.0, step=10.0)
+    cap_f_max = st.number_input("Fallow cap max", min_value=0.0, value=float(dcaps["fallow"]), step=10.0)
+
+st.markdown("---")
+
+st.subheader("Optimisation method")
+method = st.selectbox("Method", ["Grid search", "Random search"], index=1)
+
+# Guardrail to avoid freezing Streamlit
+MAX_GRID_CANDIDATES = 15_000
+
+# Keep defaults conservative to avoid freezing Streamlit
+if method == "Grid search":
+    st.caption("Grid search evaluates a structured set of candidates. Large grids can be slow.")
+    g1, g2 = st.columns(2)
+    with g1:
+        n_intensity = st.slider(
+            "Cull intensity grid points",
+            2, 15, 6, 1,
+            help="Only used if cull intensity is optimised."
+        )
+    with g2:
+        n_caps = st.slider("Cap grid points per species", 2, 15, 6, 1)
+
+    # Estimate candidate count (cartesian product size)
+    n_pol = len(policies) if optimise_policy else 1
+    n_int = int(n_intensity) if optimise_intensity else 1
+    n_cap = int(n_caps)
+    est_candidates = int(n_pol * n_int * (n_cap**3))
+
+    st.caption(f"Estimated candidates to evaluate: **{est_candidates:,}**")
+
+    grid_too_big = est_candidates > MAX_GRID_CANDIDATES
+    if grid_too_big:
+        st.warning(
+            f"That grid is likely to be slow/unresponsive ({est_candidates:,} candidates). "
+            f"Reduce grid points or switch to Random search. "
+            f"(Safety limit: {MAX_GRID_CANDIDATES:,}.)"
+        )
+else:
+    st.caption("Random search samples candidates. It scales better than grids for 5D searches.")
+    max_evals = st.slider("Number of candidates", 20, 2000, 300, 10)
+    est_candidates = int(max_evals)
+    grid_too_big = False
+
+show_top_n = st.slider("Show top N candidates", 5, 100, 25, 1)
+run_btn = st.button("Run optimisation", type="primary")
+
+
+# -----------------------------
+# Fixed references for THIS optimisation run
+# -----------------------------
+# Use a fixed ruler derived from the frozen constraints, so the objective is consistent.
+frozen_caps_for_ref = {"muntjac": float(dcaps["muntjac"]), "roe": float(dcaps["roe"]), "fallow": float(dcaps["fallow"])}
+ref_budget_for_ref = float(defaults["ANNUAL_BUDGET_TOTAL"]) if defaults.get("ANNUAL_BUDGET_TOTAL") is not None else None
+
+fixed_refs_for_opt = model.score_reference_scales(
+    years=int(years),
+    annual_budget_total=(float(annual_budget_total) if annual_budget_total is not None else ref_budget_for_ref),
+    annual_cull_limits=frozen_caps_for_ref,
+    cost_params=defaults["COST_PARAMS"],
+    steady_ref=float(defaults.get("score_refs", {}).get("steady_ref", 1.0)),
+)
+
+# -----------------------------
+# Run optimisation
+# -----------------------------
+if run_btn:
+    t0 = time.time()
+
+    # Build candidate list
+    candidates = []
+
+    # policy choices
+    policy_choices = policies if optimise_policy else [str(fixed_policy)]
+
+    # intensity choices
+    if optimise_intensity:
+        intensity_choices = None  # generated below
+    else:
+        intensity_choices = [float(fixed_intensity)]
+
+    # cap grids
+    def linspace_minmax(a, b, n):
+        a = float(a)
+        b = float(b)
+        if n <= 1:
+            return [a]
+        if b < a:
+            a, b = b, a
+        return list(np.linspace(a, b, int(n)))
+
+    cap_m_grid = linspace_minmax(cap_m_min, cap_m_max, (n_caps if method == "Grid search" else 0) or 0)
+    cap_r_grid = linspace_minmax(cap_r_min, cap_r_max, (n_caps if method == "Grid search"  else 0) or 0)
+    cap_f_grid = linspace_minmax(cap_f_min, cap_f_max, (n_caps if method == "Grid search"  else 0) or 0)
+
+    if method.startswith("Grid search"):
+        intensity_grid = linspace_minmax(0.0, 1.0, n_intensity) if optimise_intensity else intensity_choices
+
+        for pol in policy_choices:
+            for inten in intensity_grid:
+                for cm in cap_m_grid:
+                    for cr in cap_r_grid:
+                        for cf in cap_f_grid:
+                            candidates.append(
+                                dict(
+                                    policy_name=str(pol),
+                                    cull_intensity=float(inten),
+                                    cap_muntjac=float(cm),
+                                    cap_roe=float(cr),
+                                    cap_fallow=float(cf),
+                                )
+                            )
+    else:
+        rng = np.random.default_rng(123)
+        for _ in range(int(max_evals)):
+            pol = rng.choice(policy_choices)
+            inten = float(rng.uniform(0.0, 1.0)) if optimise_intensity else float(intensity_choices[0])
+
+            cm = float(rng.uniform(min(cap_m_min, cap_m_max), max(cap_m_min, cap_m_max)))
+            cr = float(rng.uniform(min(cap_r_min, cap_r_max), max(cap_r_min, cap_r_max)))
+            cf = float(rng.uniform(min(cap_f_min, cap_f_max), max(cap_f_min, cap_f_max)))
+
+            candidates.append(
+                dict(
+                    policy_name=str(pol),
+                    cull_intensity=float(inten),
+                    cap_muntjac=float(cm),
+                    cap_roe=float(cr),
+                    cap_fallow=float(cf),
+                )
+            )
+
+    if len(candidates) == 0:
+        st.error("No candidates to evaluate. Check bounds/grid settings.")
+        st.stop()
+
+    # Evaluate candidates
+    results = []
+    prog = st.progress(0)
+    status = st.empty()
+
+    for i, cand in enumerate(candidates, start=1):
+        status.write(f"Evaluating candidate {i:,}/{len(candidates):,}...")
+
+        caps_tuple = (cand["cap_muntjac"], cand["cap_roe"], cand["cap_fallow"])
+
+        (
+            df_metrics,
+            totals_stats,
+            cull_stats,
+            cost_stats,
+            cull_by_class_stats,  # NEW
+            _class_split_stats,
+            _class_abundance_stats,
+            _is_ens,
+            df_cull_last_draw,
+        ) = run_scenario(
+            years=int(years),
+            bio_mode=str(bio_mode),
+            n_draws=int(n_draws),
+            rho=float(rho),
+            cull_intensity=float(cand["cull_intensity"]),
+            weight_name=str(cand["policy_name"]),
+            annual_budget_total=(float(annual_budget_total) if annual_budget_total is not None else None),
+            init_totals_tuple=init_tuple,
+            targets_tuple=targets_tuple,
+            caps_tuple=caps_tuple,
+            score_kwargs_override=score_kwargs_override,
+            fixed_score_refs=fixed_refs_for_opt,  # <-- fixed refs used here
+        )
+
+        mean_score = float(df_metrics["score"].mean())
+        flags = _binding_flags(
+            df_cull_last_draw,
+            caps={"muntjac": cand["cap_muntjac"], "roe": cand["cap_roe"], "fallow": cand["cap_fallow"]},
+            annual_budget_total=(float(annual_budget_total) if annual_budget_total is not None else None),
+        )
+
+        results.append(
+            dict(
+                mean_score=mean_score,
+                policy_name=cand["policy_name"],
+                cull_intensity=cand["cull_intensity"],
+                cap_muntjac=cand["cap_muntjac"],
+                cap_roe=cand["cap_roe"],
+                cap_fallow=cand["cap_fallow"],
+                budget_binding=flags["budget_binding"],
+                cap_binding_muntjac=flags["cap_binding_muntjac"],
+                cap_binding_roe=flags["cap_binding_roe"],
+                cap_binding_fallow=flags["cap_binding_fallow"],
+                # store series for plots + plan
+                totals_stats=totals_stats,
+                cull_stats=cull_stats,
+                cost_stats=cost_stats,
+                cull_by_class_stats=cull_by_class_stats,  # NEW
+            )
+        )
+
+        prog.progress(int(100 * i / len(candidates)))
+
+    status.write(f"Done. Evaluated {len(candidates):,} candidates in {time.time() - t0:.1f}s.")
+    prog.empty()
+
+    # Rank and show
+    results_sorted = sorted(results, key=lambda r: float(r["mean_score"]))
+    df = pd.DataFrame(
+        [
+            {k: v for k, v in r.items() if k not in ("totals_stats", "cull_stats", "cost_stats", "cull_by_class_stats")}
+            for r in results_sorted
+        ]
+    )
+    df.insert(0, "Candidate", np.arange(1, len(df) + 1))
+
+    st.subheader("Top candidates")
+    st.caption(
+        "Each row is one candidate set of management controls (policy, intensity, and per-species annual caps), ranked by mean score. "
+        "The binding flags are quick diagnostics for which constraints were active:\n"
+        "- **budget_binding**: at least one year hit the annual budget cap (i.e. the model spent essentially the full budget).\n"
+        "- **cap_binding_<species>**: at least one year hit that species’ annual cull cap (realised cull within ~0.1% of the cap).\n"
+        "These flags are computed from a single representative simulation draw, so treat them as indicative rather than exact frequencies."
+    )
+
+    st.dataframe(df.head(int(show_top_n)), use_container_width=True, hide_index=True)
+
+    # Recommended plan (best candidate)
+    best = results_sorted[0]
+    st.markdown("---")
+    st.subheader("Recommended management plan (best candidate)")
+
+    st.caption(
+        "This is the model’s realised cull schedule by year and class, reported as the mean across biology draws "
+        "with a 10–90% uncertainty band."
+    )
+
+    st.markdown(
+        f"""
+**Best candidate settings**
+- Cull policy: **{best['policy_name']}**
+- Cull intensity: **{best['cull_intensity']:.3f}**
+- Annual cull caps: Muntjac **{best['cap_muntjac']:.1f}**, Roe **{best['cap_roe']:.1f}**, Fallow **{best['cap_fallow']:.1f}**
+- Binding constraints (any year): Budget **{best['budget_binding']}**, Cap Muntjac **{best['cap_binding_muntjac']}**, Cap Roe **{best['cap_binding_roe']}**, Cap Fallow **{best['cap_binding_fallow']}**
+"""
+    )
+
+    plan = best["cull_by_class_stats"]
+    sp_pick = st.selectbox("Species for plan table", model.SPECIES, format_func=lambda s: SPECIES_DISPLAY.get(s, s))
+
+    st.markdown("**Year-by-year cull plan by class (mean with 10–90% band)**")
+    st.dataframe(_plan_table_for_species(plan, sp_pick), use_container_width=True, hide_index=True)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.download_button(
+            "Download mean plan CSV",
+            data=_plan_csv_for_species(plan, sp_pick, "mean").to_csv(index=False).encode("utf-8"),
+            file_name=f"policy_plan_{sp_pick}_mean.csv",
+            mime="text/csv",
+        )
+    with c2:
+        st.download_button(
+            "Download P10 plan CSV",
+            data=_plan_csv_for_species(plan, sp_pick, "lo").to_csv(index=False).encode("utf-8"),
+            file_name=f"policy_plan_{sp_pick}_p10.csv",
+            mime="text/csv",
+        )
+    with c3:
+        st.download_button(
+            "Download P90 plan CSV",
+            data=_plan_csv_for_species(plan, sp_pick, "hi").to_csv(index=False).encode("utf-8"),
+            file_name=f"policy_plan_{sp_pick}_p90.csv",
+            mime="text/csv",
+        )
+
+    # Top 3 plots
+    st.markdown("---")
+    top3 = results_sorted[:3]
+    if len(top3) > 0:
+        st.subheader("Top 3 candidates — plots")
+
+        totals_by = [(f"Candidate {i}", r["totals_stats"]) for i, r in enumerate(top3, start=1)]
+        cull_by = [(f"Candidate {i}", r["cull_stats"]) for i, r in enumerate(top3, start=1)]
+        cost_by = [(f"Candidate {i}", r["cost_stats"]) for i, r in enumerate(top3, start=1)]
+
+        year0 = top3[0]["totals_stats"]["year"]
+        year1 = top3[0]["cull_stats"]["year"]
+
+        st.pyplot(_plot_abundance(year0, totals_by))
+        st.pyplot(_plot_series(year1, cull_by, "Total realised cull per year — top 3 candidates", "Cull"))
+        st.pyplot(_plot_series(year1, cost_by, "Total cost per year — top 3 candidates", "Cost (£)"))

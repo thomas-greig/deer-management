@@ -1,4 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
-.streamlit/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS junk
+.DS_Store

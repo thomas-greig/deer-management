@@ -474,6 +474,14 @@ def simulate(
         cull_rows.append(
             {
                 "year": t + 1,
+
+                # NEW: realised per-class cull (30 categories)
+                **{
+                    f"{sp}_{lab}_cull": float(harvest_vecs[sp][j])
+                    for sp in SPECIES
+                    for j, lab in enumerate(STATE_LABELS)
+                },
+
                 **{f"{sp}_desired": desired[sp] for sp in SPECIES},
                 **{f"{sp}_realised": realised[sp] for sp in SPECIES},
                 **{f"{sp}_cost": per_sp_cost[sp] for sp in SPECIES},
@@ -484,6 +492,7 @@ def simulate(
                 "budget_binding": bool(budget_binding),
             }
         )
+
 
         N_next = {}
         for i, sp in enumerate(SPECIES):
@@ -576,39 +585,50 @@ def score_components_v4(
     return float(total_cull), float(total_cost), int(t_stable), float(steady_dev_late)
 
 
-def scenario_score_v4(
-    df_classes: pd.DataFrame,
-    df_cull: pd.DataFrame,
-    targets_total: dict[str, float],
+def score_reference_scales(
     *,
     years: int,
-    w_cull: float,
-    w_time: float,
-    w_steady: float,
-    w_cost: float,
-    stable_tol_rel: float,
-    stable_window: int,
-    late_window: int,
-) -> float:
+    annual_budget_total: float | None,
+    annual_cull_limits: dict[str, float],
+    cost_params: dict[str, dict] | None,
+    steady_ref: float = 1.0,
+) -> dict[str, float]:
     """
-    score = w_cull*(total_cull/1000) + w_time*(t_stable/years) + w_steady*steady_dev_late + w_cost*(total_cost/100000)
-    Lower is better.
+    Reference scales used to normalise score metrics so the *weights* are interpretable.
+
+    Defaults:
+      - total_cull_ref: sum of per-species annual caps × years
+      - total_cost_ref: (annual budget × years) if budget is provided,
+                        else cost of culling at caps each year × years
+      - time_ref: years
+      - steady_ref: 1 (steady deviation is already dimensionless)
     """
-    total_cull, total_cost, t_stable, steady_dev_late = score_components_v4(
-        df_classes=df_classes,
-        df_cull=df_cull,
-        targets_total=targets_total,
-        stable_tol_rel=stable_tol_rel,
-        stable_window=stable_window,
-        late_window=late_window,
-    )
-    years = max(int(years), 1)
-    return (
-        w_cull * (total_cull / 1000.0)
-        + w_time * (float(t_stable) / years)
-        + w_steady * float(steady_dev_late)
-        + w_cost * (total_cost / 100000.0)
-    )
+    years_i = max(int(years), 1)
+
+    cull_ref = float(sum(max(float(annual_cull_limits.get(sp, 0.0)), 0.0) for sp in SPECIES)) * float(years_i)
+    cull_ref = max(cull_ref, 1.0)
+
+    if annual_budget_total is not None:
+        cost_ref = float(max(float(annual_budget_total), 0.0)) * float(years_i)
+        cost_ref = max(cost_ref, 1.0)
+    else:
+        if cost_params is None:
+            cost_ref = 1.0
+        else:
+            per_year_caps = {sp: float(max(float(annual_cull_limits.get(sp, 0.0)), 0.0)) for sp in SPECIES}
+            per_year_cost = total_cost_from_species_harvests(per_year_caps, cost_params)
+            cost_ref = max(float(per_year_cost) * float(years_i), 1.0)
+
+    time_ref = float(years_i)
+    steady_ref = max(float(steady_ref), 1e-12)
+
+    return {
+        "total_cull_ref": cull_ref,
+        "total_cost_ref": cost_ref,
+        "time_ref": time_ref,
+        "steady_ref": steady_ref,
+    }
+
 
 
 # -----------------------
@@ -715,7 +735,7 @@ def build_defaults() -> dict:
             "survival": np.array([0.85, 0.85, 0.90, 0.90, 0.95, 0.95, 0.90, 0.90, 0.75, 0.75], dtype=float),
             "fertility": np.array([0.05, 0.60, 1.50, 1.50, 1.50], dtype=float),
             "male_birth_fraction": 0.50,
-            "K": 4000.0,
+            "K": 10774.3,
             "beta_f": 1.25,
             "beta_s0": 1.52,
             "beta_s_adult": 0.15 * 1.52,
@@ -724,7 +744,7 @@ def build_defaults() -> dict:
             "survival": np.array([0.90, 0.90, 0.95, 0.95, 0.97, 0.97, 0.94, 0.94, 0.80, 0.80], dtype=float),
             "fertility": np.array([0.00, 0.50, 0.85, 0.85, 0.85], dtype=float),
             "male_birth_fraction": 0.50,
-            "K": 3500.0,
+            "K": 10992.2,
             "beta_f": 1.00,
             "beta_s0": 1.14,
             "beta_s_adult": 0.15 * 1.14,
@@ -733,7 +753,7 @@ def build_defaults() -> dict:
             "survival": np.array([0.85, 0.85, 0.90, 0.90, 0.92, 0.92, 0.80, 0.80, 0.60, 0.60], dtype=float),
             "fertility": np.array([0.00, 0.50, 1.40, 1.40, 1.40], dtype=float),
             "male_birth_fraction": 0.50,
-            "K": 2500.0,
+            "K": 14235.0,
             "beta_f": 1.125,
             "beta_s0": 1.33,
             "beta_s_adult": 0.15 * 1.33,
@@ -769,6 +789,9 @@ def build_defaults() -> dict:
     age_fracs_default = (0.20, 0.25, 0.35, 0.15, 0.05)
     male_frac_default = 0.50
 
+    score_refs = {"steady_ref": 1.0}
+
+
     return dict(
         uttlesford_totals=uttlesford_totals,
         default_targets_total=default_targets_total,
@@ -778,9 +801,11 @@ def build_defaults() -> dict:
         biology_fixed=biology_fixed,
         weight_scenarios=weight_scenarios,
         score_kwargs=score_kwargs,
+        score_refs=score_refs,  # <-- add this line
         age_fracs_default=age_fracs_default,
         male_frac_default=male_frac_default,
         ANNUAL_CULL_LIMITS=ANNUAL_CULL_LIMITS,
         ANNUAL_BUDGET_TOTAL=ANNUAL_BUDGET_TOTAL,
         COST_PARAMS=COST_PARAMS,
     )
+
