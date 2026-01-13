@@ -14,7 +14,7 @@ from viz import (
     fig_stacked_species_totals,
 )
 
-# require_password()
+require_password()
 
 st.set_page_config(page_title="Scenario comparison", layout="wide")
 st.title("Scenario comparison")

@@ -15,8 +15,7 @@ from viz import (
     fig_stacked_species_totals,
 )
 
-# require_password()  # uncomment when you want the gate on
-# require_password()
+require_password()
 
 st.set_page_config(page_title="Policy recommendation", layout="wide")
 st.title("Policy recommendation")
