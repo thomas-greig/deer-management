@@ -6,8 +6,15 @@ import numpy as np
 import model
 from sim_runner import run_scenario
 from auth import require_password
-require_password()
 
+from viz import (
+    fig_series_with_band,
+    fig_class_split_over_time,
+    fig_stacked_abundance,
+    fig_stacked_species_totals,
+)
+
+# require_password()
 
 st.set_page_config(page_title="Scenario comparison", layout="wide")
 st.title("Scenario comparison")
@@ -18,7 +25,14 @@ SPECIES_DISPLAY = {"muntjac": "Muntjac", "roe": "Roe", "fallow": "Fallow"}
 if "scenarios" not in st.session_state:
     st.session_state["scenarios"] = []
 
+# Persist last run so selectboxes don't wipe outputs
+if "cmp_last_run" not in st.session_state:
+    st.session_state["cmp_last_run"] = None
 
+
+# -----------------------------
+# Overlay plot helpers (kept as-is)
+# -----------------------------
 def fig_overlay_with_band(year, series_list, title: str, y_label: str) -> plt.Figure:
     fig, ax = plt.subplots()
     for label, s in series_list:
@@ -46,6 +60,9 @@ def fig_overlay(year, series_list, title: str, y_label: str) -> plt.Figure:
     return fig
 
 
+# -----------------------------
+# Plan table helpers
+# -----------------------------
 def _plan_table_for_species(plan: dict, sp: str) -> pd.DataFrame:
     """
     Human-readable plan:
@@ -75,6 +92,9 @@ def _plan_csv_for_species(plan: dict, sp: str, which: str) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+# -----------------------------
+# Add scenario UI
+# -----------------------------
 st.subheader("Add a scenario")
 
 colA, colB = st.columns(2)
@@ -114,15 +134,23 @@ with colA:
 with colB:
     default_targets = defaults["default_targets_total"]
     st.markdown("**Target post-cull abundances**")
-    target_m = st.number_input("Target Muntjac", min_value=0.0, value=float(default_targets["muntjac"]), step=10.0, key="cmp_t_m")
+    target_m = st.number_input(
+        "Target Muntjac", min_value=0.0, value=float(default_targets["muntjac"]), step=10.0, key="cmp_t_m"
+    )
     target_r = st.number_input("Target Roe", min_value=0.0, value=float(default_targets["roe"]), step=10.0, key="cmp_t_r")
-    target_f = st.number_input("Target Fallow", min_value=0.0, value=float(default_targets["fallow"]), step=10.0, key="cmp_t_f")
+    target_f = st.number_input(
+        "Target Fallow", min_value=0.0, value=float(default_targets["fallow"]), step=10.0, key="cmp_t_f"
+    )
 
     default_caps = defaults["ANNUAL_CULL_LIMITS"]
     st.markdown("**Annual cull caps per species**")
-    cap_m = st.number_input("Cull cap Muntjac", min_value=0.0, value=float(default_caps["muntjac"]), step=10.0, key="cmp_c_m")
+    cap_m = st.number_input(
+        "Cull cap Muntjac", min_value=0.0, value=float(default_caps["muntjac"]), step=10.0, key="cmp_c_m"
+    )
     cap_r = st.number_input("Cull cap Roe", min_value=0.0, value=float(default_caps["roe"]), step=10.0, key="cmp_c_r")
-    cap_f = st.number_input("Cull cap Fallow", min_value=0.0, value=float(default_caps["fallow"]), step=10.0, key="cmp_c_f")
+    cap_f = st.number_input(
+        "Cull cap Fallow", min_value=0.0, value=float(default_caps["fallow"]), step=10.0, key="cmp_c_f"
+    )
 
 st.markdown("**Scenario label**")
 budget_tag = f"£{annual_budget_total:,.0f}" if annual_budget_total is not None else "no budget cap"
@@ -145,6 +173,10 @@ if st.button("Add scenario", type="primary"):
 
 st.markdown("---")
 
+
+# -----------------------------
+# Shared settings
+# -----------------------------
 st.subheader("Shared settings (held constant across scenarios)")
 
 col1, col2, col3 = st.columns(3)
@@ -174,7 +206,10 @@ with col3:
     else:
         st.caption("Fixed biology (single run)")
 
-# ---- FIXED REFERENCES FOR FAIR COMPARISON ----
+
+# -----------------------------
+# Fixed refs for fair comparison
+# -----------------------------
 st.markdown("---")
 st.subheader("Scoring reference scales (fixed for fair comparison)")
 st.caption(
@@ -190,9 +225,12 @@ fixed_refs = model.score_reference_scales(
     steady_ref=float(defaults.get("score_refs", {}).get("steady_ref", 1.0)),
 )
 
-
 st.markdown("---")
 
+
+# -----------------------------
+# Scenario list
+# -----------------------------
 st.subheader("Scenario list")
 
 if not st.session_state["scenarios"]:
@@ -209,6 +247,7 @@ else:
     with colx:
         if st.button("Clear all scenarios"):
             st.session_state["scenarios"] = []
+            st.session_state["cmp_last_run"] = None
             st.rerun()
 
     with coly:
@@ -222,6 +261,7 @@ else:
         if st.button("Delete selected"):
             if st.session_state["scenarios"]:
                 st.session_state["scenarios"].pop(int(delete_idx))
+                st.session_state["cmp_last_run"] = None
                 st.rerun()
 
     with colz:
@@ -233,8 +273,9 @@ else:
         overlays_cull = []
         overlays_cost = []
 
-        # NEW: store the per-class plan for each scenario so we can output an actionable plan for the winner
+        # Per-scenario plan and extra stats so we can plot the winner like the policy page
         scenario_plans: dict[str, dict] = {}
+        scenario_extras: dict[str, dict] = {}
 
         with st.spinner("Running scenarios..."):
             for sc in st.session_state["scenarios"]:
@@ -243,10 +284,10 @@ else:
                     totals_stats,
                     cull_stats,
                     cost_stats,
-                    cull_by_class_stats,  # NEW
-                    _class_split_stats,
-                    _class_abundance_stats,
-                    _is_ens,
+                    cull_by_class_stats,
+                    class_split_stats,
+                    class_abundance_stats,
+                    is_ens,
                     _df_cull_last_draw,
                 ) = run_scenario(
                     years=int(years),
@@ -259,7 +300,7 @@ else:
                     init_totals_tuple=init_tuple,
                     targets_tuple=tuple(sc["targets_tuple"]),
                     caps_tuple=tuple(sc["caps_tuple"]),
-                    fixed_score_refs=fixed_refs,  # fixed ruler
+                    fixed_score_refs=fixed_refs,
                 )
 
                 summary = df_metrics.mean(numeric_only=True).to_dict()
@@ -284,79 +325,163 @@ else:
                 overlays_cull.append((sc["label"], cull_stats))
                 overlays_cost.append((sc["label"], cost_stats))
 
-                scenario_plans[str(sc["label"])] = cull_by_class_stats
+                lbl = str(sc["label"])
+                scenario_plans[lbl] = cull_by_class_stats
+                scenario_extras[lbl] = dict(
+                    totals_stats=totals_stats,
+                    cull_stats=cull_stats,
+                    cost_stats=cost_stats,
+                    class_split_stats=class_split_stats,
+                    class_abundance_stats=class_abundance_stats,
+                    is_ensemble=bool(is_ens),
+                )
+
+        df_cmp = pd.DataFrame(results)
+
+        # Cache everything needed for rendering (prevents reset on widget changes)
+        st.session_state["cmp_last_run"] = dict(
+            df_cmp=df_cmp,
+            overlays_all=overlays_all,
+            overlays_cull=overlays_cull,
+            overlays_cost=overlays_cost,
+            scenario_plans=scenario_plans,
+            scenario_extras=scenario_extras,
+            years=int(years),
+            bio_mode=str(bio_mode),
+            n_draws=int(n_draws),
+            init_tuple=tuple(init_tuple),
+        )
 
         st.success("Done.")
 
-        st.subheader("Comparison table (mean across draws)")
-        df_cmp = pd.DataFrame(results)
 
-        cols = [
-            "label",
-            "score",
-            "total_cull",
-            "total_cost",
-            "t_stable",
-            "steady_dev_late",
-            "weight_name",
-            "cull_intensity",
-            "rho",
-            "annual_budget_total",
-            "target_muntjac",
-            "target_roe",
-            "target_fallow",
-            "cap_muntjac",
-            "cap_roe",
-            "cap_fallow",
-        ]
-        cols = [c for c in cols if c in df_cmp.columns]
-        st.dataframe(df_cmp[cols].sort_values("score"), use_container_width=True, hide_index=True)
+# -----------------------------
+# Render cached results (prevents reset on widget change)
+# -----------------------------
+if st.session_state["cmp_last_run"] is not None:
+    cache = st.session_state["cmp_last_run"]
 
+    df_cmp = cache["df_cmp"]
+    overlays_all = cache["overlays_all"]
+    overlays_cull = cache["overlays_cull"]
+    overlays_cost = cache["overlays_cost"]
+    scenario_plans = cache["scenario_plans"]
+    scenario_extras = cache["scenario_extras"]
 
-        st.download_button(
-            "Download comparison CSV",
-            data=df_cmp.to_csv(index=False).encode("utf-8"),
-            file_name="scenario_comparison.csv",
-            mime="text/csv",
+    years_r = int(cache.get("years", years))
+    bio_mode_r = str(cache.get("bio_mode", bio_mode))
+    n_draws_r = int(cache.get("n_draws", n_draws))
+    init_tuple_r = tuple(cache.get("init_tuple", init_tuple))
+
+    # -----------------------------
+    # Comparison table
+    # -----------------------------
+    st.subheader("Comparison table (mean across draws)")
+
+    cols = [
+        "label",
+        "score",
+        "total_cull",
+        "total_cost",
+        "t_stable",
+        "steady_dev_late",
+        "weight_name",
+        "cull_intensity",
+        "rho",
+        "annual_budget_total",
+        "target_muntjac",
+        "target_roe",
+        "target_fallow",
+        "cap_muntjac",
+        "cap_roe",
+        "cap_fallow",
+    ]
+    cols = [c for c in cols if c in df_cmp.columns]
+    st.dataframe(df_cmp[cols].sort_values("score"), use_container_width=True, hide_index=True)
+
+    st.download_button(
+        "Download comparison CSV",
+        data=df_cmp.to_csv(index=False).encode("utf-8"),
+        file_name="scenario_comparison.csv",
+        mime="text/csv",
+    )
+
+    # -----------------------------
+    # Comparison plots
+    # -----------------------------
+    st.markdown("---")
+    st.subheader("Comparison plots")
+
+    if bio_mode_r == "ensemble":
+        st.caption(
+            "Each line is the scenario mean across draws. The shaded band is the 10th–90th percentile across draws (pointwise by year)."
+        )
+        y_all = scenario_extras[list(scenario_extras.keys())[0]]["totals_stats"]["year"]
+        y_flow = overlays_cull[0][1]["year"]
+        st.pyplot(fig_overlay_with_band(y_all, overlays_all, "All-species total abundance — scenarios", "All-species total"))
+        st.pyplot(fig_overlay_with_band(y_flow, overlays_cull, "Total realised cull per year — scenarios", "Cull"))
+        st.pyplot(fig_overlay_with_band(y_flow, overlays_cost, "Total cost per year — scenarios", "Cost (£)"))
+    else:
+        st.caption("Fixed biology: each line is deterministic for its scenario.")
+        y_all = scenario_extras[list(scenario_extras.keys())[0]]["totals_stats"]["year"]
+        y_flow = overlays_cull[0][1]["year"]
+        st.pyplot(fig_overlay(y_all, overlays_all, "All-species total abundance — scenarios", "All-species total"))
+        st.pyplot(fig_overlay(y_flow, overlays_cull, "Total realised cull per year — scenarios", "Cull"))
+        st.pyplot(fig_overlay(y_flow, overlays_cost, "Total cost per year — scenarios", "Cost (£)"))
+
+    # -----------------------------
+    # Recommended management plan (best scenario)
+    # -----------------------------
+    st.markdown("---")
+    st.subheader("Recommended management plan (best scenario)")
+
+    if len(df_cmp) == 0:
+        st.info("No results to recommend from.")
+    else:
+        best_row = df_cmp.sort_values("score").iloc[0]
+        best_label = str(best_row["label"])
+        plan = scenario_plans.get(best_label)
+        extra = scenario_extras.get(best_label)
+
+        init_m, init_r, init_f = init_tuple_r
+        draws_text = f"{int(n_draws_r)} draw(s)" if str(bio_mode_r) == "ensemble" else "single run"
+
+        st.markdown(
+            f"""
+**Shared settings**
+- Horizon: **{int(years_r)} years**
+- Biology mode: **{str(bio_mode_r)}** ({draws_text})
+- Initial totals: Muntjac **{init_m:.0f}**, Roe **{init_r:.0f}**, Fallow **{init_f:.0f}**
+"""
         )
 
-        # -----------------------------
-        # NEW: Actionable plan for best scenario
-        # -----------------------------
-        st.markdown("---")
-        st.subheader("Recommended management plan (best scenario)")
-
-        if len(df_cmp) > 0:
-            best_row = df_cmp.sort_values("score").iloc[0]
-            best_label = str(best_row["label"])
-            plan = scenario_plans.get(best_label)
-
-            st.markdown(
-                f"""
-**Best scenario**
+        st.markdown(
+            f"""
+**Best scenario controls**
 - Label: **{best_label}**
 - Cull policy: **{best_row.get('weight_name', '')}**
 - Cull intensity: **{float(best_row.get('cull_intensity', np.nan)):.3f}**
-- Max cull fraction per class (rho): **{float(best_row.get('rho', np.nan)):.3f}**
+- Max cull fraction per class (rho): **{float(best_row.get('rho', np.nan)):.2f}**
 - Annual budget cap: **{best_row.get('annual_budget_total', None)}**
-- Annual cull caps: Muntjac **{best_row.get('cap_muntjac', np.nan)}**, Roe **{best_row.get('cap_roe', np.nan)}**, Fallow **{best_row.get('cap_fallow', np.nan)}**
+- Targets: Muntjac **{best_row.get('target_muntjac', np.nan):.0f}**, Roe **{best_row.get('target_roe', np.nan):.0f}**, Fallow **{best_row.get('target_fallow', np.nan):.0f}**
+- Annual cull caps: Muntjac **{best_row.get('cap_muntjac', np.nan):.0f}**, Roe **{best_row.get('cap_roe', np.nan):.0f}**, Fallow **{best_row.get('cap_fallow', np.nan):.0f}**
 """
+        )
+
+        if plan is None:
+            st.warning("Could not find the per-class cull plan for the best scenario (unexpected).")
+        else:
+            sp_pick = st.selectbox(
+                "Species for plan table",
+                model.SPECIES,
+                format_func=lambda s: SPECIES_DISPLAY.get(s, s),
+                key="best_plan_species",
             )
 
-            if plan is None:
-                st.warning("Could not find the per-class cull plan for the best scenario (unexpected).")
-            else:
+            with st.expander("Year-by-year cull plan by class (table)", expanded=False):
                 st.caption(
-                    "This is the model’s realised cull schedule by year and class, reported as the mean across biology draws "
-                    "with a 10–90% uncertainty band."
+                    "Realised cull schedule by year and class, reported as the mean across biology draws with a 10–90% uncertainty band."
                 )
-                sp_pick = st.selectbox(
-                    "Species for plan table",
-                    model.SPECIES,
-                    format_func=lambda s: SPECIES_DISPLAY.get(s, s),
-                    key="best_plan_species",
-                )
-                st.markdown("**Year-by-year cull plan by class (mean with 10–90% band)**")
                 st.dataframe(_plan_table_for_species(plan, sp_pick), use_container_width=True, hide_index=True)
 
                 c1, c2, c3 = st.columns(3)
@@ -382,41 +507,118 @@ else:
                         mime="text/csv",
                     )
 
-        # -----------------------------
-        # Overlay plots
-        # -----------------------------
-        st.markdown("---")
-        st.subheader("Overlay plots")
-        if bio_mode == "ensemble":
-            st.caption(
-                "Each line is the scenario mean across draws. The shaded band is the 10th–90th percentile across draws (pointwise by year)."
-            )
-            st.pyplot(fig_overlay_with_band(totals_stats["year"], overlays_all, "All-species total abundance — scenarios", "All-species total"))
-            st.pyplot(fig_overlay_with_band(overlays_cull[0][1]["year"], overlays_cull, "Total realised cull per year — scenarios", "Cull"))
-            st.pyplot(fig_overlay_with_band(overlays_cost[0][1]["year"], overlays_cost, "Total cost per year — scenarios", "Cost (£)"))
+        if extra is None:
+            st.warning("Best scenario plots unavailable (missing cached stats).")
         else:
-            st.caption("Fixed biology: each line is deterministic for its scenario.")
-            st.pyplot(fig_overlay(totals_stats["year"], overlays_all, "All-species total abundance — scenarios", "All-species total"))
-            st.pyplot(fig_overlay(totals_stats["year"], overlays_cull, "Total realised cull per year — scenarios", "Cull"))
-            st.pyplot(fig_overlay(totals_stats["year"], overlays_cost, "Total cost per year — scenarios", "Cost (£)"))
+            st.markdown("---")
+            st.subheader("Best scenario — plots")
 
-        # -----------------------------
-        # Score decomposition (collapsible, at bottom)
-        # -----------------------------
-        st.markdown("---")
-        with st.expander("Score decomposition (advanced)", expanded=False):
-            need = ["score", "contrib_cost", "contrib_steady", "contrib_time", "contrib_cull"]
-            if all(c in df_cmp.columns for c in need):
-                st.caption(
-                    "Because reference scales are fixed across scenarios, these contribution percentages are directly comparable."
+            year_tot = extra["totals_stats"]["year"]
+            year_flow = extra["cull_stats"]["year"]
+
+            st.pyplot(
+                fig_series_with_band(
+                    year_tot,
+                    extra["totals_stats"]["all_total"],
+                    "All-species total abundance (mean + 10–90% band)",
+                    "Abundance",
+                    target=None,
+                    y0=True,
                 )
-                d = df_cmp[["label"] + need + ["n_cost", "n_steady", "n_time", "n_cull"]].copy()
-                denom = d["score"].replace(0.0, np.nan)
+            )
+            st.pyplot(
+                fig_series_with_band(
+                    year_flow,
+                    extra["cull_stats"],
+                    "Total realised cull per year (mean + 10–90% band)",
+                    "Cull",
+                    target=None,
+                    y0=True,
+                )
+            )
+            st.pyplot(
+                fig_series_with_band(
+                    year_flow,
+                    extra["cost_stats"],
+                    "Total cost per year (mean + 10–90% band)",
+                    "Cost (£)",
+                    target=None,
+                    y0=True,
+                )
+            )
 
-                for c in ["contrib_cost", "contrib_steady", "contrib_time", "contrib_cull"]:
-                    d[c + "_%"] = 100.0 * d[c] / denom
+            st.pyplot(
+                fig_stacked_species_totals(
+                    year_tot,
+                    extra["totals_stats"],
+                    "All-species total abundance split by species (stacked mean)",
+                    "Abundance",
+                    species_display=SPECIES_DISPLAY,
+                )
+            )
 
-                st.dataframe(d.sort_values("score"), use_container_width=True, hide_index=True)
-            else:
-                st.info("Score decomposition columns not available in results.")
+            st.markdown("### Species detail")
+            sp_detail = st.selectbox(
+                "Species (detail plots)",
+                model.SPECIES,
+                format_func=lambda x: SPECIES_DISPLAY.get(x, x),
+                key="cmp_species_detail_best",
+            )
 
+            targets_total = {
+                "muntjac": float(best_row.get("target_muntjac", np.nan)),
+                "roe": float(best_row.get("target_roe", np.nan)),
+                "fallow": float(best_row.get("target_fallow", np.nan)),
+            }
+
+            st.pyplot(
+                fig_series_with_band(
+                    year_tot,
+                    extra["totals_stats"][f"{sp_detail}_total"],
+                    f"{SPECIES_DISPLAY.get(sp_detail, sp_detail)} total (mean + 10–90% band; dashed = target)",
+                    "Abundance",
+                    target=targets_total.get(sp_detail, None),
+                    y0=True,
+                )
+            )
+
+            show_band_detail = bool(extra.get("is_ensemble", False)) and st.checkbox(
+                "Show 10–90% band on class split/abundance",
+                value=False,
+                key="cmp_detail_show_band_best",
+            )
+
+            st.pyplot(
+                fig_class_split_over_time(
+                    extra["class_split_stats"]["year"],
+                    extra["class_split_stats"][sp_detail],
+                    f"{SPECIES_DISPLAY.get(sp_detail, sp_detail)}: class split over time",
+                    bool(show_band_detail),
+                )
+            )
+
+            st.pyplot(
+                fig_stacked_abundance(
+                    extra["class_abundance_stats"]["year"],
+                    extra["class_abundance_stats"][sp_detail],
+                    f"{SPECIES_DISPLAY.get(sp_detail, sp_detail)}: class abundance (stacked mean)",
+                    "Abundance",
+                    show_band=bool(show_band_detail),
+                )
+            )
+
+    # -----------------------------
+    # Score decomposition (collapsible, at bottom)
+    # -----------------------------
+    st.markdown("---")
+    with st.expander("Score decomposition (advanced)", expanded=False):
+        need = ["score", "contrib_cost", "contrib_steady", "contrib_time", "contrib_cull"]
+        if all(c in df_cmp.columns for c in need):
+            st.caption("Because reference scales are fixed across scenarios, these contribution percentages are directly comparable.")
+            d = df_cmp[["label"] + need + ["n_cost", "n_steady", "n_time", "n_cull"]].copy()
+            denom = d["score"].replace(0.0, np.nan)
+            for c in ["contrib_cost", "contrib_steady", "contrib_time", "contrib_cull"]:
+                d[c + "_%"] = 100.0 * d[c] / denom
+            st.dataframe(d.sort_values("score"), use_container_width=True, hide_index=True)
+        else:
+            st.info("Score decomposition columns not available in results.")
