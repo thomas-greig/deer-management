@@ -20,7 +20,9 @@ There are three ways you can explore the results of different culling strategies
 - Find the optimal strategy
 
 You will find a page for each in the menu on the left hand side.
+
 ---
+
 ##Instructions
 **Set model context**
 - **Years** (simulation horizon)
@@ -44,7 +46,6 @@ You will find a page for each in the menu on the left hand side.
 - Comparison plots for total abundance / cull / cost [Comparison page only]
 - Recommended management plan [Comparison and optimisation pages only]
 - Scenario table with raw metrics + normalised components + total score [Comparison and optimisation pages only]
-- Downloadable outputs (including per-class cull plan where available)
 - Top strategy plots for total abundance / cull / cost [Comparison and optimisation pages only]
 - Diagnostics on constraint binding (budget/caps frequently binding) [Optimisation page only]
 """

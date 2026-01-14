@@ -123,9 +123,6 @@ if use_uttlesford:
     n0_muntjac = float(utt["muntjac"])
     n0_roe = float(utt["roe"])
     n0_fallow = float(utt["fallow"])
-    st.sidebar.caption(
-        f"Uttlesford: Initial Muntjac={n0_muntjac:.0f}, Initial Roe={n0_roe:.0f}, Initial Fallow={n0_fallow:.0f}"
-    )
 else:
     st.sidebar.markdown("**Initial abundances**")
     n0_muntjac = st.sidebar.number_input("Initial Muntjac", min_value=0.0, value=float(utt["muntjac"]), step=10.0)
