@@ -16,7 +16,7 @@ from viz import (
 )
 require_password()
 
-st.set_page_config(page_title="Strategy recommendation", layout="wide")
+st.set_page_config(page_title="Find the optimal management strategy", layout="wide")
 st.title("Find the optimal management strategy")
 
 defaults = model.build_defaults()
@@ -116,23 +116,106 @@ def _plan_csv_for_species(plan: dict, sp: str, which: str) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+
+
 # -----------------------------
-# Score priorities UI
+# Frozen controls
 # -----------------------------
-st.subheader("Set score priorities")
+# -----------------------------
+# Fixed context + fixed strategy
+# -----------------------------
+st.subheader("Fixed management strategy controls")
 st.caption(
-    "Priorities are applied to normalised score components. To keep this interpretable, you can use defaults or make small relative adjustments."
+    "These settings are held fixed during optimisation."
 )
 
+# --- Fixed management strategy controls ---
+mcol1, mcol2 = st.columns([1, 1])
+
+with mcol1:
+    rho = st.slider(
+        "Max annual cull fraction per class",
+        0.0, 1.0, 0.50, 0.01,
+        help="Limit on the proportion of any single age/sex class that can be culled in one year.",
+    )
+
+with mcol2:
+    budget_enabled = st.checkbox("Enable annual budget cap", value=True)
+    annual_budget_total = None
+    if budget_enabled:
+        annual_budget_total = st.number_input(
+            "Annual budget cap (£)",
+            min_value=0.0,
+            value=float(defaults["ANNUAL_BUDGET_TOTAL"]),
+            step=1000.0,
+        )
+
+st.markdown("**Post-cull abundance targets**")
+tcol1, tcol2, tcol3 = st.columns(3)
+dt = defaults["default_targets_total"]
+with tcol1:
+    target_m = st.number_input("Target Muntjac", min_value=0.0, value=float(dt["muntjac"]), step=10.0)
+with tcol2:
+    target_r = st.number_input("Target Roe", min_value=0.0, value=float(dt["roe"]), step=10.0)
+with tcol3:
+    target_f = st.number_input("Target Fallow", min_value=0.0, value=float(dt["fallow"]), step=10.0)
+
+targets_tuple = (float(target_m), float(target_r), float(target_f))
+
+
+# -----------------------------
+# Fixed context controls
+# -----------------------------
+st.subheader("Fixed context controls")
+st.caption(
+    "These settings are held fixed during optimisation.")
+
+utt = defaults["uttlesford_totals"]
+
+ccol1, ccol2, ccol3 = st.columns([1, 1.2, 1])
+
+with ccol1:
+    years = st.slider("Years", 3, 50, 10, 1)
+
+with ccol2:
+    use_utt = st.checkbox("Use Uttlesford abundance estimates", value=True)
+    if use_utt:
+        init_tuple = (float(utt["muntjac"]), float(utt["roe"]), float(utt["fallow"]))
+        st.caption(
+            f"Initial: Muntjac={init_tuple[0]:.0f}, Roe={init_tuple[1]:.0f}, Fallow={init_tuple[2]:.0f}"
+        )
+    else:
+        n0_m = st.number_input("Initial Muntjac", min_value=0.0, value=float(utt["muntjac"]), step=10.0)
+        n0_r = st.number_input("Initial Roe", min_value=0.0, value=float(utt["roe"]), step=10.0)
+        n0_f = st.number_input("Initial Fallow", min_value=0.0, value=float(utt["fallow"]), step=10.0)
+        init_tuple = (float(n0_m), float(n0_r), float(n0_f))
+
+with ccol3:
+    bio_mode = st.selectbox("Biology mode", ["fixed", "ensemble"], index=0)
+    n_draws = 1
+    if bio_mode == "ensemble":
+        n_draws = st.slider("Ensemble draws", 1, 50, 15, 1)
+
+
+# -----------------------------
+# Score weighting (as before, but compact)
+# -----------------------------
 sk = defaults["score_kwargs"]
 
 mode = st.radio(
-    "Weight setting",
+    "Score weighting",
     ["Use default priorities", "Adjust priorities (relative to defaults)"],
     index=0,
+    help="Adjust the relative contributions of the 4 elements of the evaluation score",
 )
 
-priority_levels = ["Very low priority", "Low priority", "Medium priority", "High priority", "Very high priority"]
+priority_levels = [
+    "Very low priority",
+    "Low priority",
+    "Medium priority",
+    "High priority",
+    "Very high priority",
+]
 priority_mult = {
     "Very low priority": 0.70,
     "Low priority": 0.85,
@@ -147,14 +230,12 @@ if mode == "Use default priorities":
     w_steady = float(sk["w_steady"])
     w_cost = float(sk["w_cost"])
 else:
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2 = st.columns(2)
     with c1:
         p_cull = st.selectbox("Cull", priority_levels, index=2)
-    with c2:
         p_time = st.selectbox("Time to stabilise", priority_levels, index=2)
-    with c3:
+    with c2:
         p_steady = st.selectbox("Steady-state deviation", priority_levels, index=2)
-    with c4:
         p_cost = st.selectbox("Cost", priority_levels, index=2)
 
     w_cull = float(sk["w_cull"]) * priority_mult[p_cull]
@@ -181,64 +262,6 @@ st.markdown("---")
 
 
 # -----------------------------
-# Frozen controls
-# -----------------------------
-st.subheader("Set fixed context and management strategy controls")
-st.caption("These settings are held fixed. The optimiser searches over the management controls below.")
-
-colA, colB, colC = st.columns(3)
-
-utt = defaults["uttlesford_totals"]
-with colA:
-    years = st.slider("Years", 3, 50, 10, 1)
-    rho = st.slider("Max cull fraction per class (rho)", 0.0, 0.5, 0.30, 0.01)
-
-with colB:
-    use_utt = st.checkbox("Use Uttlesford abundance estimates", value=True)
-    if use_utt:
-        init_tuple = (float(utt["muntjac"]), float(utt["roe"]), float(utt["fallow"]))
-        st.caption(f"Initial: Muntjac={init_tuple[0]:.0f}, Roe={init_tuple[1]:.0f}, Fallow={init_tuple[2]:.0f}")
-    else:
-        n0_m = st.number_input("Initial Muntjac", min_value=0.0, value=float(utt["muntjac"]), step=10.0)
-        n0_r = st.number_input("Initial Roe", min_value=0.0, value=float(utt["roe"]), step=10.0)
-        n0_f = st.number_input("Initial Fallow", min_value=0.0, value=float(utt["fallow"]), step=10.0)
-        init_tuple = (float(n0_m), float(n0_r), float(n0_f))
-
-with colC:
-    budget_enabled = st.checkbox("Enable annual budget cap", value=True)
-    annual_budget_total = None
-    if budget_enabled:
-        annual_budget_total = st.number_input(
-            "Annual budget cap (£)",
-            min_value=0.0,
-            value=float(defaults["ANNUAL_BUDGET_TOTAL"]),
-            step=1000.0,
-        )
-
-st.markdown("**Targets (post-cull population totals)**")
-tcol1, tcol2, tcol3 = st.columns(3)
-dt = defaults["default_targets_total"]
-with tcol1:
-    target_m = st.number_input("Target Muntjac", min_value=0.0, value=float(dt["muntjac"]), step=10.0)
-with tcol2:
-    target_r = st.number_input("Target Roe", min_value=0.0, value=float(dt["roe"]), step=10.0)
-with tcol3:
-    target_f = st.number_input("Target Fallow", min_value=0.0, value=float(dt["fallow"]), step=10.0)
-
-targets_tuple = (float(target_m), float(target_r), float(target_f))
-
-st.markdown("**Biology mode**")
-bio_mode = st.selectbox("Biology mode", ["fixed", "ensemble"], index=0)
-n_draws = 1
-if bio_mode == "ensemble":
-    n_draws = st.slider("Ensemble draws", 1, 50, 15, 1)
-else:
-    st.caption("Fixed biology: single run per candidate.")
-
-st.markdown("---")
-
-
-# -----------------------------
 # Optimised controls + search space
 # -----------------------------
 st.subheader("Select which management controls to optimise")
@@ -249,16 +272,16 @@ default_policy_index = policies.index(default_policy) if default_policy in polic
 
 col1, col2 = st.columns(2)
 with col1:
-    optimise_policy = st.checkbox("Optimise cull policy", value=True)
+    optimise_policy = st.checkbox("Optimise cull policy", value=True, help="Determine which age/sex classes should be prioritised in the cull")
     if not optimise_policy:
         fixed_policy = st.selectbox("Cull policy (fixed)", policies, index=default_policy_index)
 
 with col2:
-    optimise_intensity = st.checkbox("Optimise cull intensity", value=True)
+    optimise_intensity = st.checkbox("Optimise cull intensity", value=True, help="Determine the fraction of the surplus (current abundance - target abundance) that is targeted for removal each year, subject to caps and budget.")
     if not optimise_intensity:
         fixed_intensity = st.slider("Cull intensity (fixed)", 0.0, 1.0, 1.0, 0.05)
 
-st.markdown("**Annual cull caps per species bounds**")
+st.markdown("**Annual cull caps per species optimation bounds**")
 dcaps = defaults["ANNUAL_CULL_LIMITS"]
 b1, b2, b3 = st.columns(3)
 with b1:
@@ -274,7 +297,7 @@ with b3:
 st.markdown("---")
 
 st.subheader("Choose optimisation method")
-method = st.selectbox("Method", ["Grid search", "Random search"], index=1)
+method = st.selectbox("Method", ["Grid search", "Random search"], index=1, help="Chooses how the optimisation algorithm explores candidate management strategies. Grid search is systematic but time-consuming; random search is faster and usually good enough")
 
 MAX_GRID_CANDIDATES = 15_000
 
@@ -301,12 +324,12 @@ if method == "Grid search":
             f"(Safety limit: {MAX_GRID_CANDIDATES:,}.)"
         )
 else:
-    st.caption("Random search samples candidates. It scales better than grids for 5D searches.")
+    st.caption("Random search is recommended as grid search can take a very long time.")
     max_evals = st.slider("Number of candidates", 20, 2000, 300, 10)
     est_candidates = int(max_evals)
     grid_too_big = False
 
-show_top_n = st.slider("Show top N candidates", 5, 100, 25, 1)
+show_top_n = st.slider("Show top N candidates", 5, 100, 10, 1)
 run_btn = st.button("Run optimisation", type="primary")
 
 
@@ -551,7 +574,7 @@ else:
 **Fixed strategy controls (used in optimisation)**
 - Horizon: **{int(years_r)} years**
 - Biology mode: **{str(bio_mode_r)}** ({draws_text})
-- Max cull fraction per class (rho): **{float(rho_r):.2f}**
+- Max annual cull fraction per class: **{float(rho_r):.2f}**
 - Initial totals: Muntjac **{init_m:.0f}**, Roe **{init_r:.0f}**, Fallow **{init_f:.0f}**
 - Targets (post-cull totals): Muntjac **{targ_m:.0f}**, Roe **{targ_r:.0f}**, Fallow **{targ_f:.0f}**
 - Annual budget cap: **{budget_text}**

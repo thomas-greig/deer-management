@@ -18,9 +18,9 @@ st.title("Model description")
 # -------------------------
 # Model description (Markdown + KaTeX-friendly math)
 # -------------------------
+
 st.markdown(
     r"""
-This page describes the population model used throughout the tool.
 
 ## Simple explanation of model
 
@@ -64,9 +64,9 @@ The fraction of the surplus that is targeted for removal each year, subject to c
 **Practical and ethical constraints**
 - **Annual budget cap**  
   Cull cost increases nonlinearly with the number of deer removed, reflecting increasing logistical difficulty at higher harvest intensities.
-- **Absolute annual species cap**  
+- **Annual cull caps per species**  
   A maximum number of individuals of each species that can be culled per year.
-- **Relative annual age–sex cap**  
+- **Max cull fraction per class**  
   A maximum fraction of each age–sex class that can be removed per year.
 
 ---
@@ -255,6 +255,37 @@ Lower scores indicate better performance.
 
 ---
 
+### Optimisation of culling strategy
+
+Management optimisation is formulated as a discrete search over a low-dimensional policy space, with each candidate policy evaluated via forward simulation of the population model defined in the **Detailed mathematical formulation of the model** section above. The optimiser does not alter biological parameters or model structure (treated as fixed, or sampled exogenously in ensemble mode), but instead searches over feasible management controls subject to practical constraints.
+
+**Decision variables**  
+Each candidate management strategy is parameterised by:
+
+$$
+\theta = \bigl(c,\; \mathbf{H}^{\max},\; w\bigr),
+$$
+
+where $c \in [0,1]$ is the cull intensity scaling the annual surplus removal, $\mathbf{H}^{\max} = (H^{\max}_{\text{m}}, H^{\max}_{\text{r}}, H^{\max}_{\text{f}})$ are absolute annual species-level cull caps, and $w \in \mathbb{R}^{10}_{\ge 0}$ is a fixed age–sex weighting vector defining the cull policy. The weighting vector is selected from a small predefined set of biologically interpretable policies (e.g. female-prioritised, adult-only), rather than optimised continuously.
+
+**Candidate generation**  
+The search space is explored using either a structured grid or a random sampling scheme. Grid search evaluates all combinations of discretised values of $c$ and $\mathbf{H}^{\max}$ across the selected policies, subject to an upper bound on the total number of candidates to ensure tractability. Random search instead draws candidate parameters independently from uniform distributions over the same bounded ranges, allowing efficient exploration of higher-dimensional control spaces.
+
+**Policy evaluation**  
+For each candidate $\theta$, the population dynamics are simulated forward for $T$ years. Annual harvests are computed according to the surplus-based rule in the **Cull policy and constraints** section above, with age–sex allocation determined by $w$, per-class fractional caps enforced, and species-level caps applied. If a total annual budget is specified, species harvests are further adjusted via a constrained allocation step that maximises weighted surplus reduction subject to the nonlinear cost function defined in the **Budget constraint and cost function** section above.
+
+When ensemble biology is enabled, the same candidate policy is evaluated across multiple independent parameter draws, and performance metrics are averaged across runs to reduce sensitivity to biological uncertainty.
+
+**Objective function and selection**  
+In the optimisation procedure, the weighted score $S$ defined in the **Scenario scoring and objective function** section above is treated as the objective function. Each candidate management strategy, parameterised by a control vector $\theta$, is evaluated by forward simulation of the population model, yielding a corresponding score $S(\theta)$. When ensemble biology is used, the mean score across parameter draws is computed for each candidate strategy.
+
+Candidate policies are ranked in ascending order of mean score, and those with the lowest values are identified as optimal within the explored policy space. Alongside the score, diagnostic indicators are recorded to identify whether annual budget constraints or species-level cull caps are binding, allowing the selected strategies to be interpreted in the context of practical feasibility.
+
+**Interpretation**  
+The optimisation procedure is intentionally heuristic rather than gradient-based. The objective function is non-smooth, simulation-based, and incorporates discrete constraints, making classical optimisation inappropriate. The resulting optima should therefore be interpreted as robust, policy-feasible solutions within the explored control space, rather than mathematically unique global minima.
+
+---
+
 ### Full update step
 
 For each species and year:
@@ -270,11 +301,10 @@ For each species and year:
 Key biological parameters are uncertain. To account for this, policies are evaluated across an ensemble of perturbed systems:
 
 - Carrying capacities (±20%)
-- Density-dependence strengths (±20%)
+- Density-dependence strengths on fertility and survival (±20%)
 - Competition coefficients (±15%)
 - Migration coupling strengths (±30%)
 
 Each policy is simulated across all ensemble members. Scores are computed per realisation and summarised across the ensemble (mean, spread, worst-case), ensuring robustness to ecological uncertainty.
 """
 )
-

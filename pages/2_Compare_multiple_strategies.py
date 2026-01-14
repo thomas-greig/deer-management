@@ -16,7 +16,7 @@ from viz import (
 
 require_password()
 
-st.set_page_config(page_title="Strategy comparison", layout="wide")
+st.set_page_config(page_title="Compare multiple management strategies", layout="wide")
 st.title("Compare multiple management strategies")
 
 defaults = model.build_defaults()
@@ -114,26 +114,25 @@ with colA:
     policy_names = list(defaults["weight_scenarios"].keys())
     default_policy = "Female priority, no juveniles"
     default_policy_index = policy_names.index(default_policy) if default_policy in policy_names else 0
-    weight_name = st.selectbox("Cull policy (all species)", policy_names, index=default_policy_index, key="cmp_policy")
+    weight_name = st.selectbox("Cull policy (all species)", policy_names, index=default_policy_index, key="cmp_policy", help="Determines which age/sex classes are prioritised in the cull")
 
     cull_intensity = st.slider(
         "Cull intensity",
         min_value=0.0,
         max_value=1.0,
-        value=1.0,
+        value=0.5,
         step=0.05,
         key="cmp_intensity",
         help=(
-            "Each year, the model computes the current surplus max(total − target, 0) and attempts to remove "
-            "cull_intensity × surplus that year (subject to caps and budget)."
+            "The fraction of the surplus (current abundance - target abundance) that is targeted for removal each year, subject to caps and budget."
         ),
     )
 
-    rho = st.slider("Max cull fraction per class", 0.0, 0.5, 0.30, 0.01, key="cmp_rho")
+    rho = st.slider("Max annual cull fraction per class", 0.0, 1.0, 0.50, 0.01, key="cmp_rho", help="Limit on the proportion of any single age/sex class that can be culled in one year.")
 
 with colB:
     default_targets = defaults["default_targets_total"]
-    st.markdown("**Target post-cull abundances**")
+    st.markdown("**Post-cull abundance targets**")
     target_m = st.number_input(
         "Target Muntjac", min_value=0.0, value=float(default_targets["muntjac"]), step=10.0, key="cmp_t_m"
     )
@@ -199,10 +198,10 @@ with col2:
         init_tuple = (float(n0_m), float(n0_r), float(n0_f))
 
 with col3:
-    bio_mode = st.selectbox("Biology mode", ["fixed", "ensemble"], index=1, key="cmp_bio_mode")
+    bio_mode = st.selectbox("Biology mode", ["fixed", "ensemble"], index=1, key="cmp_bio_mode", help="Use fixed for a quick run with the default biological parameters. Use ensemble to create uncertainty bands based on multiple sets of parameter values")
     n_draws = 1
     if bio_mode == "ensemble":
-        n_draws = st.slider("Ensemble draws", 1, 50, 15, 1, key="cmp_draws")
+        n_draws = st.slider("Ensemble draws", 1, 50, 40, 1, key="cmp_draws")
     else:
         st.caption("Fixed biology (single run)")
 
@@ -460,7 +459,7 @@ if st.session_state["cmp_last_run"] is not None:
 - Label: **{best_label}**
 - Cull policy: **{best_row.get('weight_name', '')}**
 - Cull intensity: **{float(best_row.get('cull_intensity', np.nan)):.3f}**
-- Max cull fraction per class (rho): **{float(best_row.get('rho', np.nan)):.2f}**
+- Max annual cull fraction per class: **{float(best_row.get('rho', np.nan)):.2f}**
 - Annual budget cap: **{best_row.get('annual_budget_total', None)}**
 - Targets: Muntjac **{best_row.get('target_muntjac', np.nan):.0f}**, Roe **{best_row.get('target_roe', np.nan):.0f}**, Fallow **{best_row.get('target_fallow', np.nan):.0f}**
 - Annual cull caps: Muntjac **{best_row.get('cap_muntjac', np.nan):.0f}**, Roe **{best_row.get('cap_roe', np.nan):.0f}**, Fallow **{best_row.get('cap_fallow', np.nan):.0f}**

@@ -1,6 +1,3 @@
-# =========================
-# FILE: app.py
-# =========================
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -153,22 +150,21 @@ else:
 policy_names = list(defaults["weight_scenarios"].keys())
 default_policy = "Female priority, no juveniles"
 default_policy_index = policy_names.index(default_policy) if default_policy in policy_names else 0
-weight_name = st.sidebar.selectbox("Cull policy (all species)", policy_names, index=default_policy_index)
+weight_name = st.sidebar.selectbox("Cull policy (all species)", policy_names, index=default_policy_index, help="Determines which age/sex classes are prioritised in the cull")
 
 cull_intensity = st.sidebar.slider(
     "Cull intensity",
     min_value=0.0,
     max_value=1.0,
-    value=1.0,
+    value=0.5,
     step=0.05,
     help=(
-        "Each year, the model computes the current surplus max(total − target, 0) and attempts to remove "
-        "cull_intensity × surplus that year (subject to caps and budget)."
+        "The fraction of the surplus (current abundance - target abundance) that is targeted for removal each year, subject to caps and budget."
     ),
 )
 
 default_targets = defaults["default_targets_total"]
-st.sidebar.markdown("**Target post-cull abundances**")
+st.sidebar.markdown("**Post-cull abundance targets**")
 target_muntjac = st.sidebar.number_input("Target Muntjac", min_value=0.0, value=float(default_targets["muntjac"]), step=10.0)
 target_roe = st.sidebar.number_input("Target Roe", min_value=0.0, value=float(default_targets["roe"]), step=10.0)
 target_fallow = st.sidebar.number_input("Target Fallow", min_value=0.0, value=float(default_targets["fallow"]), step=10.0)
@@ -181,7 +177,14 @@ cap_roe = st.sidebar.number_input("Cull cap Roe", min_value=0.0, value=float(def
 cap_fallow = st.sidebar.number_input("Cull cap Fallow", min_value=0.0, value=float(default_caps["fallow"]), step=10.0)
 annual_cull_limits = {"muntjac": float(cap_muntjac), "roe": float(cap_roe), "fallow": float(cap_fallow)}
 
-rho = st.sidebar.slider("Max cull fraction per class", 0.0, 0.5, 0.30, 0.01)
+rho = st.sidebar.slider(
+    "Max annual cull fraction per class",
+    0.0, 1.0, 0.30, 0.01,
+    help=(
+        "Limit on the proportion of any single age/sex class that can be culled in one year. "
+    ),
+)
+
 
 # -------------------------
 # Modelling stability
@@ -189,10 +192,10 @@ rho = st.sidebar.slider("Max cull fraction per class", 0.0, 0.5, 0.30, 0.01)
 st.sidebar.markdown("---")
 st.sidebar.subheader("Modelling stability")
 
-bio_mode = st.sidebar.selectbox("Biology mode", ["fixed", "ensemble"], index=1)
+bio_mode = st.sidebar.selectbox("Biology mode", ["fixed", "ensemble"], index=1, help="Use fixed for a quick run with the default biological parameters. Use ensemble to create uncertainty bands based on multiple sets of parameter values")
 n_draws = 1
 if bio_mode == "ensemble":
-    n_draws = st.sidebar.slider("Ensemble draws", 1, 50, 15, 1)
+    n_draws = st.sidebar.slider("Ensemble size", 1, 50, 40, 1)
 else:
     st.sidebar.caption("Fixed biology (single run)")
 
@@ -233,10 +236,6 @@ if use_fixed_refs:
         annual_cull_limits=dict(defaults["ANNUAL_CULL_LIMITS"]),
         cost_params=defaults["COST_PARAMS"],
         steady_ref=float(defaults.get("score_refs", {}).get("steady_ref", 1.0)),
-    )
-    st.sidebar.caption(
-        "ON: Scores use fixed reference scales (same normalisation as Scenario comparison "
-        "and Policy recommendation)."
     )
 else:
     st.sidebar.caption(
