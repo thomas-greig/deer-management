@@ -14,11 +14,10 @@ from viz import (
     fig_stacked_abundance,
     fig_stacked_species_totals,
 )
-
 require_password()
 
-st.set_page_config(page_title="Policy recommendation", layout="wide")
-st.title("Policy recommendation")
+st.set_page_config(page_title="Strategy recommendation", layout="wide")
+st.title("Find the optimal management strategy")
 
 defaults = model.build_defaults()
 SPECIES_DISPLAY = {"muntjac": "Muntjac", "roe": "Roe", "fallow": "Fallow"}
@@ -120,7 +119,7 @@ def _plan_csv_for_species(plan: dict, sp: str, which: str) -> pd.DataFrame:
 # -----------------------------
 # Score priorities UI
 # -----------------------------
-st.subheader("Score priorities")
+st.subheader("Set score priorities")
 st.caption(
     "Priorities are applied to normalised score components. To keep this interpretable, you can use defaults or make small relative adjustments."
 )
@@ -184,7 +183,7 @@ st.markdown("---")
 # -----------------------------
 # Frozen controls
 # -----------------------------
-st.subheader("Fixed scenario controls")
+st.subheader("Set fixed context and management strategy controls")
 st.caption("These settings are held fixed. The optimiser searches over the management controls below.")
 
 colA, colB, colC = st.columns(3)
@@ -242,7 +241,7 @@ st.markdown("---")
 # -----------------------------
 # Optimised controls + search space
 # -----------------------------
-st.subheader("Management controls (optimised)")
+st.subheader("Select which management controls to optimise")
 
 policies = list(defaults["weight_scenarios"].keys())
 default_policy = "Female priority, no juveniles"
@@ -274,7 +273,7 @@ with b3:
 
 st.markdown("---")
 
-st.subheader("Optimisation method")
+st.subheader("Choose optimisation method")
 method = st.selectbox("Method", ["Grid search", "Random search"], index=1)
 
 MAX_GRID_CANDIDATES = 15_000
@@ -522,7 +521,7 @@ else:
     # -----------------------------
     with st.expander("Top candidates (table)", expanded=False):
         st.caption(
-            "Each row is one candidate set of management controls (policy, intensity, and per-species annual caps), ranked by mean score. "
+            "Each row is one candidate set of management controls (cull policy, intensity, and per-species annual caps), ranked by mean score. "
             "The binding flags are quick diagnostics for which constraints were active:\n"
             "- **budget_binding**: at least one year hit the annual budget cap.\n"
             "- **cap_binding_<species>**: at least one year hit that species’ annual cull cap.\n"
@@ -531,17 +530,17 @@ else:
         st.dataframe(df.head(int(show_top_n_r)), use_container_width=True, hide_index=True)
 
     # -----------------------------
-    # Best scenario
+    # Best strategy
     # -----------------------------
     best = results_sorted[0]
     st.markdown("---")
-    st.subheader("Recommended management plan (best scenario)")
+    st.subheader("Recommended management plan (best strategy)")
     st.caption(
         "This is the model’s realised cull schedule by year and class, reported as the mean across biology draws "
         "with a 10–90% uncertainty band."
     )
 
-    # Fixed scenario controls summary
+    # Fixed strategy controls summary
     init_m, init_r, init_f = init_tuple_r
     targ_m, targ_r, targ_f = targets_tuple_r
     budget_text = "Disabled" if annual_budget_total_r is None else f"£{float(annual_budget_total_r):,.0f} / year"
@@ -549,7 +548,7 @@ else:
 
     st.markdown(
         f"""
-**Fixed scenario controls (used in optimisation)**
+**Fixed strategy controls (used in optimisation)**
 - Horizon: **{int(years_r)} years**
 - Biology mode: **{str(bio_mode_r)}** ({draws_text})
 - Max cull fraction per class (rho): **{float(rho_r):.2f}**
@@ -606,15 +605,15 @@ else:
             )
 
     # -----------------------------
-    # Best scenario plots (requested)
+    # Best strategy plots (requested)
     # -----------------------------
     st.markdown("---")
-    st.subheader("Best scenario — plots")
+    st.subheader("Best strategy — plots")
 
     year_tot = best["totals_stats"]["year"]
     year_flow = best["cull_stats"]["year"]
 
-    # 4) Best scenario plots: all-species total abundance, total realised cull, total cost
+    # 4) Best strategy plots: all-species total abundance, total realised cull, total cost
     st.pyplot(
         fig_series_with_band(
             year_tot,
@@ -647,7 +646,7 @@ else:
         )
     )
 
-    # 5) Move all-species total abundance split by species into best scenario plots
+    # 5) Move all-species total abundance split by species into best strategy plots
     st.pyplot(
         fig_stacked_species_totals(
             year_tot,

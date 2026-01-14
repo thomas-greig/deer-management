@@ -16,8 +16,8 @@ from viz import (
 
 require_password()
 
-st.set_page_config(page_title="Scenario comparison", layout="wide")
-st.title("Scenario comparison")
+st.set_page_config(page_title="Strategy comparison", layout="wide")
+st.title("Compare multiple management strategies")
 
 defaults = model.build_defaults()
 SPECIES_DISPLAY = {"muntjac": "Muntjac", "roe": "Roe", "fallow": "Fallow"}
@@ -93,9 +93,9 @@ def _plan_csv_for_species(plan: dict, sp: str, which: str) -> pd.DataFrame:
 
 
 # -----------------------------
-# Add scenario UI
+# Add strategy UI
 # -----------------------------
-st.subheader("Add a scenario")
+st.subheader("Define and add a management strategy")
 
 colA, colB = st.columns(2)
 
@@ -152,15 +152,15 @@ with colB:
         "Cull cap Fallow", min_value=0.0, value=float(default_caps["fallow"]), step=10.0, key="cmp_c_f"
     )
 
-st.markdown("**Scenario label**")
+st.markdown("**Strategy label**")
 budget_tag = f"£{annual_budget_total:,.0f}" if annual_budget_total is not None else "no budget cap"
 label_default = f"{weight_name} | intensity={cull_intensity:.2f} | budget={budget_tag}"
 label = st.text_input("Label", value=label_default, key="cmp_label")
 
-if st.button("Add scenario", type="primary"):
+if st.button("Add strategy", type="primary"):
     st.session_state["scenarios"].append(
         dict(
-            label=label.strip() if label.strip() else f"Scenario {len(st.session_state['scenarios']) + 1}",
+            label=label.strip() if label.strip() else f"Strategy {len(st.session_state['scenarios']) + 1}",
             annual_budget_total=(float(annual_budget_total) if annual_budget_total is not None else None),
             weight_name=str(weight_name),
             cull_intensity=float(cull_intensity),
@@ -169,7 +169,7 @@ if st.button("Add scenario", type="primary"):
             rho=float(rho),
         )
     )
-    st.success("Scenario added.")
+    st.success("Strategy added.")
 
 st.markdown("---")
 
@@ -177,7 +177,7 @@ st.markdown("---")
 # -----------------------------
 # Shared settings
 # -----------------------------
-st.subheader("Shared settings (held constant across scenarios)")
+st.subheader("Define the context (settings held constant across strategies)")
 
 col1, col2, col3 = st.columns(3)
 utt = defaults["uttlesford_totals"]
@@ -211,9 +211,8 @@ with col3:
 # Fixed refs for fair comparison
 # -----------------------------
 st.markdown("---")
-st.subheader("Scoring reference scales (fixed for fair comparison)")
 st.caption(
-    "For fair scenario comparison, all scenarios are scored using the SAME reference scales (derived from the defaults), "
+    "For fair strategy comparison, all strategies are scored using the same reference scales (derived from the defaults), "
     "even if their caps/budgets differ."
 )
 
@@ -229,12 +228,12 @@ st.markdown("---")
 
 
 # -----------------------------
-# Scenario list
+# Strategy list
 # -----------------------------
-st.subheader("Scenario list")
+st.subheader("Strategy list")
 
 if not st.session_state["scenarios"]:
-    st.info("Add at least one scenario above.")
+    st.info("Add at least one strategy above.")
 else:
     df_list = pd.DataFrame(st.session_state["scenarios"])
     st.dataframe(
@@ -245,14 +244,14 @@ else:
 
     colx, coly, colz = st.columns(3)
     with colx:
-        if st.button("Clear all scenarios"):
+        if st.button("Clear all strategies"):
             st.session_state["scenarios"] = []
             st.session_state["cmp_last_run"] = None
             st.rerun()
 
     with coly:
         delete_idx = st.number_input(
-            "Delete scenario index (0-based)",
+            "Delete strategy index (0-based)",
             min_value=0,
             max_value=max(0, len(st.session_state["scenarios"]) - 1),
             value=0,
@@ -265,7 +264,7 @@ else:
                 st.rerun()
 
     with colz:
-        run_all = st.button("Run all scenarios", type="primary")
+        run_all = st.button("Run all strategies", type="primary")
 
     if run_all:
         results = []
@@ -273,7 +272,7 @@ else:
         overlays_cull = []
         overlays_cost = []
 
-        # Per-scenario plan and extra stats so we can plot the winner like the policy page
+        # Per-strategy plan and extra stats so we can plot the winner like the policy page
         scenario_plans: dict[str, dict] = {}
         scenario_extras: dict[str, dict] = {}
 
@@ -376,7 +375,7 @@ if st.session_state["cmp_last_run"] is not None:
     # -----------------------------
     # Comparison table
     # -----------------------------
-    st.subheader("Comparison table (mean across draws)")
+    st.subheader("Comparison table (averaged across draws)")
 
     cols = [
         "label",
@@ -414,26 +413,26 @@ if st.session_state["cmp_last_run"] is not None:
 
     if bio_mode_r == "ensemble":
         st.caption(
-            "Each line is the scenario mean across draws. The shaded band is the 10th–90th percentile across draws (pointwise by year)."
+            "Each line is the strategy mean across draws. The shaded band is the 10th–90th percentile across draws (pointwise by year)."
         )
         y_all = scenario_extras[list(scenario_extras.keys())[0]]["totals_stats"]["year"]
         y_flow = overlays_cull[0][1]["year"]
-        st.pyplot(fig_overlay_with_band(y_all, overlays_all, "All-species total abundance — scenarios", "All-species total"))
-        st.pyplot(fig_overlay_with_band(y_flow, overlays_cull, "Total realised cull per year — scenarios", "Cull"))
-        st.pyplot(fig_overlay_with_band(y_flow, overlays_cost, "Total cost per year — scenarios", "Cost (£)"))
+        st.pyplot(fig_overlay_with_band(y_all, overlays_all, "All-species total abundance", "All-species total"))
+        st.pyplot(fig_overlay_with_band(y_flow, overlays_cull, "Total realised cull per year", "Cull"))
+        st.pyplot(fig_overlay_with_band(y_flow, overlays_cost, "Total cost per year", "Cost (£)"))
     else:
-        st.caption("Fixed biology: each line is deterministic for its scenario.")
+        st.caption("Fixed biology: each line is deterministic for its strategy.")
         y_all = scenario_extras[list(scenario_extras.keys())[0]]["totals_stats"]["year"]
         y_flow = overlays_cull[0][1]["year"]
-        st.pyplot(fig_overlay(y_all, overlays_all, "All-species total abundance — scenarios", "All-species total"))
-        st.pyplot(fig_overlay(y_flow, overlays_cull, "Total realised cull per year — scenarios", "Cull"))
-        st.pyplot(fig_overlay(y_flow, overlays_cost, "Total cost per year — scenarios", "Cost (£)"))
+        st.pyplot(fig_overlay(y_all, overlays_all, "All-species total abundance", "All-species total"))
+        st.pyplot(fig_overlay(y_flow, overlays_cull, "Total realised cull per year", "Cull"))
+        st.pyplot(fig_overlay(y_flow, overlays_cost, "Total cost per year", "Cost (£)"))
 
     # -----------------------------
-    # Recommended management plan (best scenario)
+    # Recommended management plan (best strategy)
     # -----------------------------
     st.markdown("---")
-    st.subheader("Recommended management plan (best scenario)")
+    st.subheader("Recommended management plan (best strategy)")
 
     if len(df_cmp) == 0:
         st.info("No results to recommend from.")
@@ -457,7 +456,7 @@ if st.session_state["cmp_last_run"] is not None:
 
         st.markdown(
             f"""
-**Best scenario controls**
+**Best strategy controls**
 - Label: **{best_label}**
 - Cull policy: **{best_row.get('weight_name', '')}**
 - Cull intensity: **{float(best_row.get('cull_intensity', np.nan)):.3f}**
@@ -469,7 +468,7 @@ if st.session_state["cmp_last_run"] is not None:
         )
 
         if plan is None:
-            st.warning("Could not find the per-class cull plan for the best scenario (unexpected).")
+            st.warning("Could not find the per-class cull plan for the best strategy (unexpected).")
         else:
             sp_pick = st.selectbox(
                 "Species for plan table",
@@ -508,10 +507,10 @@ if st.session_state["cmp_last_run"] is not None:
                     )
 
         if extra is None:
-            st.warning("Best scenario plots unavailable (missing cached stats).")
+            st.warning("Best strategy plots unavailable (missing cached stats).")
         else:
             st.markdown("---")
-            st.subheader("Best scenario — plots")
+            st.subheader("Best strategy — plots")
 
             year_tot = extra["totals_stats"]["year"]
             year_flow = extra["cull_stats"]["year"]
@@ -614,7 +613,7 @@ if st.session_state["cmp_last_run"] is not None:
     with st.expander("Score decomposition (advanced)", expanded=False):
         need = ["score", "contrib_cost", "contrib_steady", "contrib_time", "contrib_cull"]
         if all(c in df_cmp.columns for c in need):
-            st.caption("Because reference scales are fixed across scenarios, these contribution percentages are directly comparable.")
+            st.caption("Because reference scales are fixed across strategies, these contribution percentages are directly comparable.")
             d = df_cmp[["label"] + need + ["n_cost", "n_steady", "n_time", "n_cull"]].copy()
             denom = d["score"].replace(0.0, np.nan)
             for c in ["contrib_cost", "contrib_steady", "contrib_time", "contrib_cull"]:

@@ -83,9 +83,9 @@ Key numerical parameters controlling biological processes are estimated from the
 
 ---
 
-### Scenario evaluation
+### Strategy evaluation
 
-Each scenario is evaluated using a **scalar score**, where lower scores indicate more desirable outcomes.  
+Each strategy is evaluated using a **scalar score**, where lower scores indicate more desirable outcomes.  
 The score incorporates the following components, listed from highest to lowest importance:
 
 1. Total cost (£)
@@ -234,7 +234,7 @@ If total cost exceeds the annual budget $ B $, harvests are reduced using a Lagr
 
 ### Scenario scoring and objective function
 
-Each scenario is scored using four components:
+Each strategy is scored using four components:
 
 - **Total harvest**
 - **Total cost**
