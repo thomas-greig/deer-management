@@ -7,7 +7,7 @@ st.set_page_config(page_title="Home", layout="wide")
 st.title("Deer cull modedlling tool")
 
 st.markdown(
-    """
+    r"""
 ## About this tool
 This tool allows you to explore how different deer culling strategies affect species abundance under financial and feasability constraints (targets, caps, budgets). The tool was built to model Uttlesford, a district of lowland habitat in East Anglia characterised by by
 intensive arable agriculture, fragmented woodland cover, high road density, and a substantial human population. It models 3 species of deer (Muntjac, Roe and Fallow) split into 2 sex and 5 age categories each. Management strategies can be compared using a consistent scoring framework based on the financial cost of the cull, the number of years it takes for the population to stabalise at the target abundance levels, the difference between the the final abundance and the target abundance, and the total number of deer culled.
@@ -23,7 +23,7 @@ You will find a page for each in the menu on the left hand side.
 
 ---
 
-##Instructions
+## Instructions
 
 ---
 
