@@ -14,7 +14,7 @@ from viz import (
     fig_stacked_abundance,
     fig_stacked_species_totals,
 )
-#require_password()
+require_password()
 
 st.set_page_config(page_title="Find the optimal management strategy", layout="wide")
 st.title("Find the optimal management strategy")
