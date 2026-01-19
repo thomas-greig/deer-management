@@ -179,7 +179,7 @@ annual_cull_limits = {"muntjac": float(cap_muntjac), "roe": float(cap_roe), "fal
 
 rho = st.sidebar.slider(
     "Max annual cull fraction per class",
-    0.0, 1.0, 0.30, 0.01,
+    0.0, 1.0, 0.50, 0.01,
     help=(
         "Limit on the proportion of any single age/sex class that can be culled in one year. "
     ),

@@ -24,6 +24,9 @@ You will find a page for each in the menu on the left hand side.
 ---
 
 ##Instructions
+
+---
+
 **Set model context**
 - **Years** (simulation horizon)
 - **Initial abundances** (Uttlesford preset or manual)

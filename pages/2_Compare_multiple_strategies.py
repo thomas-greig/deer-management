@@ -14,7 +14,7 @@ from viz import (
     fig_stacked_species_totals,
 )
 
-require_password()
+#require_password()
 
 st.set_page_config(page_title="Compare multiple management strategies", layout="wide")
 st.title("Compare multiple management strategies")
@@ -63,20 +63,26 @@ def fig_overlay(year, series_list, title: str, y_label: str) -> plt.Figure:
 # -----------------------------
 # Plan table helpers
 # -----------------------------
-def _plan_table_for_species(plan: dict, sp: str) -> pd.DataFrame:
+def _plan_table_for_species(plan: dict, sp: str, show_band: bool) -> pd.DataFrame:
     """
     Human-readable plan:
       rows: Year
       cols: STATE_LABELS
-      cell: "mean (lo–hi)"
+      cell: mean OR "mean (lo–hi)" depending on show_band
     """
     years = plan["year"]
     out = {"Year": years}
     for lab in model.STATE_LABELS:
-        m = plan[sp][lab]["mean"]
-        lo = plan[sp][lab]["lo"]
-        hi = plan[sp][lab]["hi"]
-        out[lab] = [f"{m[i]:.1f} ({lo[i]:.1f}–{hi[i]:.1f})" for i in range(len(years))]
+        m = np.asarray(plan[sp][lab]["mean"])
+        if show_band:
+            lo = np.asarray(plan[sp][lab]["lo"])
+            hi = np.asarray(plan[sp][lab]["hi"])
+            out[lab] = [
+                f"{int(np.rint(m[i]))} ({int(np.rint(lo[i]))}–{int(np.rint(hi[i]))})"
+                for i in range(len(years))
+            ]
+        else:
+            out[lab] = [f"{int(np.rint(m[i]))}" for i in range(len(years))]
     return pd.DataFrame(out)
 
 
@@ -84,11 +90,13 @@ def _plan_csv_for_species(plan: dict, sp: str, which: str) -> pd.DataFrame:
     """
     Numeric plan for download.
     which in {"mean","lo","hi"}.
+    Returns integer columns.
     """
     years = plan["year"]
     out = {"year": years}
     for lab in model.STATE_LABELS:
-        out[lab] = plan[sp][lab][which]
+        arr = np.asarray(plan[sp][lab][which])
+        out[lab] = np.rint(arr).astype(int)
     return pd.DataFrame(out)
 
 
@@ -477,10 +485,17 @@ if st.session_state["cmp_last_run"] is not None:
             )
 
             with st.expander("Year-by-year cull plan by class (table)", expanded=False):
-                st.caption(
-                    "Realised cull schedule by year and class, reported as the mean across biology draws with a 10–90% uncertainty band."
-                )
-                st.dataframe(_plan_table_for_species(plan, sp_pick), use_container_width=True, hide_index=True)
+                is_ens = (bio_mode_r == "ensemble")
+                if is_ens:
+                    st.caption(
+                        "Realised cull schedule by year and class, reported as the mean across biology draws with a 10–90% uncertainty band."
+                    )
+                else:
+                    st.caption(
+                        "Realised cull schedule by year and class, reported as a single deterministic run (no uncertainty band)."
+                    )
+
+                st.dataframe(_plan_table_for_species(plan, sp_pick, show_band=is_ens), use_container_width=True, hide_index=True)
 
                 c1, c2, c3 = st.columns(3)
                 with c1:
@@ -490,20 +505,22 @@ if st.session_state["cmp_last_run"] is not None:
                         file_name=f"scenario_plan_{sp_pick}_mean.csv",
                         mime="text/csv",
                     )
-                with c2:
-                    st.download_button(
-                        "Download P10 plan CSV",
-                        data=_plan_csv_for_species(plan, sp_pick, "lo").to_csv(index=False).encode("utf-8"),
-                        file_name=f"scenario_plan_{sp_pick}_p10.csv",
-                        mime="text/csv",
-                    )
-                with c3:
-                    st.download_button(
-                        "Download P90 plan CSV",
-                        data=_plan_csv_for_species(plan, sp_pick, "hi").to_csv(index=False).encode("utf-8"),
-                        file_name=f"scenario_plan_{sp_pick}_p90.csv",
-                        mime="text/csv",
-                    )
+
+                if bio_mode_r == "ensemble":
+                    with c2:
+                        st.download_button(
+                            "Download P10 plan CSV",
+                            data=_plan_csv_for_species(plan, sp_pick, "lo").to_csv(index=False).encode("utf-8"),
+                            file_name=f"scenario_plan_{sp_pick}_p10.csv",
+                            mime="text/csv",
+                        )
+                    with c3:
+                        st.download_button(
+                            "Download P90 plan CSV",
+                            data=_plan_csv_for_species(plan, sp_pick, "hi").to_csv(index=False).encode("utf-8"),
+                            file_name=f"scenario_plan_{sp_pick}_p90.csv",
+                            mime="text/csv",
+                        )
 
         if extra is None:
             st.warning("Best strategy plots unavailable (missing cached stats).")
