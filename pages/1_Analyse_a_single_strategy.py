@@ -330,7 +330,7 @@ else:
 
     with left:
         if is_ensemble:
-            st.subheader("Summary across draws")
+            st.subheader("Summary across ensemble draws")
             st.dataframe(df_metrics.describe(), use_container_width=True)
 
         st.subheader("Draw-by-draw metrics")
@@ -348,7 +348,7 @@ else:
 
         if is_ensemble:
             st.caption(
-                "Ensemble plots show the **mean** across draws. The shaded band is the **10th–90th percentile** "
+                "Ensemble plots show the **mean** across ensemble draws. The shaded band is the **10th–90th percentile** "
                 "across draws at each year (computed pointwise over the ensemble)."
             )
 

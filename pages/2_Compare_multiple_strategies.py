@@ -382,7 +382,7 @@ if st.session_state["cmp_last_run"] is not None:
     # -----------------------------
     # Comparison table
     # -----------------------------
-    st.subheader("Comparison table (averaged across draws)")
+    st.subheader("Comparison table (averaged across ensemble draws)")
 
     cols = [
         "label",
@@ -420,7 +420,7 @@ if st.session_state["cmp_last_run"] is not None:
 
     if bio_mode_r == "ensemble":
         st.caption(
-            "Each line is the strategy mean across draws. The shaded band is the 10th–90th percentile across draws (pointwise by year)."
+            "Each line is the strategy mean across ensemble draws. The shaded band is the 10th–90th percentile across draws (pointwise by year)."
         )
         y_all = scenario_extras[list(scenario_extras.keys())[0]]["totals_stats"]["year"]
         y_flow = overlays_cull[0][1]["year"]
@@ -488,7 +488,7 @@ if st.session_state["cmp_last_run"] is not None:
                 is_ens = (bio_mode_r == "ensemble")
                 if is_ens:
                     st.caption(
-                        "Realised cull schedule by year and class, reported as the mean across biology draws with a 10–90% uncertainty band."
+                        "Realised cull schedule by year and class, reported as the mean across ensemble draws with a 10–90% uncertainty band."
                     )
                 else:
                     st.caption(

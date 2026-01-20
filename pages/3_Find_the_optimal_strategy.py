@@ -609,7 +609,7 @@ else:
 
     if bio_mode_r == "ensemble":
         st.caption(
-            "This is the model’s realised cull schedule by year and class, reported as the mean across biology draws "
+            "This is the model’s realised cull schedule by year and class, reported as the mean across ensemble draws "
             "with a 10–90% uncertainty band."
         )
     else:
