@@ -129,14 +129,14 @@ with colA:
         min_value=0.0,
         max_value=1.0,
         value=0.5,
-        step=0.05,
+        step=0.01,
         key="cmp_intensity",
         help=(
             "The fraction of the surplus (current abundance - target abundance) that is targeted for removal each year, subject to caps and budget."
         ),
     )
 
-    rho = st.slider("Max annual cull fraction per class", 0.0, 1.0, 0.50, 0.01, key="cmp_rho", help="Limit on the proportion of any single age/sex class that can be culled in one year.")
+    rho = st.slider("Max annual cull fraction per class", 0.0, 1.0, 1.0, 0.01, key="cmp_rho", help="Limit on the proportion of any single age/sex class that can be culled in one year.")
 
 with colB:
     default_targets = defaults["default_targets_total"]

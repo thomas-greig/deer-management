@@ -38,7 +38,7 @@ IDX = {
 }
 
 # Defaults (can be overridden by app controls)
-ANNUAL_CULL_LIMITS = {"muntjac": 600.0, "roe": 500.0, "fallow": 400.0}
+ANNUAL_CULL_LIMITS = {"muntjac": 500.0, "roe": 500.0, "fallow": 500.0}
 ANNUAL_BUDGET_TOTAL = 40_000.0  # UPDATED default control
 COST_PARAMS = {
     "muntjac": {"linear": 80.0, "scale": 0.0583333333, "power": 2.0},

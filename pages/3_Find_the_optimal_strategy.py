@@ -143,7 +143,7 @@ mcol1, mcol2 = st.columns([1, 1])
 with mcol1:
     rho = st.slider(
         "Max annual cull fraction per class",
-        0.0, 1.0, 0.50, 0.01,
+        0.0, 1.0, 1.0, 0.01,
         help="Limit on the proportion of any single age/sex class that can be culled in one year.",
     )
 
