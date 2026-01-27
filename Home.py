@@ -50,5 +50,13 @@ You will find a page for each in the menu on the left hand side.
     7. Scenario table with raw metrics + normalised components + total score [Comparison and optimisation pages only]
     8. Top strategy plots for total abundance / cull / cost [Comparison and optimisation pages only]
     9. Diagnostics on constraint binding (budget/caps frequently binding) [Optimisation page only]
+
+---
+
+© 2026 Thomas Greig. All rights reserved.
+
+**Disclaimer**  
+This application is provided strictly for research and demonstration purposes only.  
+The author accepts no responsibility or liability for any actions taken as a result of using this tool.
 """
 )
