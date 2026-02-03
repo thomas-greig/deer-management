@@ -14,7 +14,7 @@ from viz import (
     fig_stacked_species_totals,
 )
 
-require_password()
+#require_password()
 
 st.set_page_config(page_title="Compare multiple management strategies", layout="wide")
 st.title("Compare multiple management strategies")

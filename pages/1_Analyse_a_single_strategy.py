@@ -6,7 +6,7 @@ import numpy as np
 import model
 from sim_runner import run_scenario
 from auth import require_password
-require_password()
+#require_password()
 
 
 st.set_page_config(page_title="Scenario analysis", layout="wide")
