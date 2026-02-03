@@ -28,7 +28,7 @@ def run_scenario(
        totals_stats,
        cull_stats,
        cost_stats,
-       cull_by_class_stats,     # NEW: year-by-year, species-by-class realised cull (mean/10–90 band)
+       cull_by_class_stats,     
        class_split_stats,
        class_abundance_stats,
        is_ensemble,
@@ -44,14 +44,14 @@ def run_scenario(
     fixed_score_refs must contain keys:
       {"total_cull_ref","total_cost_ref","time_ref","steady_ref"}
 
-    IMPORTANT:
-      This script assumes model.simulate() now returns df_cull with per-class realised cull columns:
+    
+      This script assumes model.simulate() returns df_cull with per-class realised cull columns:
         f"{sp}_{lab}_cull" for sp in SPECIES and lab in STATE_LABELS
       (30 columns total).
     """
     defaults = model.build_defaults()
 
-    # Optional: force density dependence off (not used on policy rec page, but kept for compatibility)
+    # Optional: force density dependence off 
     if disable_density_dependence:
         for sp in model.SPECIES:
             defaults["base_params"][sp]["beta_f"] = 0.0
@@ -128,7 +128,7 @@ def run_scenario(
     cost_all_draws = []
     classes_all_draws = []
 
-    # NEW: per-draw per-class cull time series (year 1..years)
+    # per-draw per-class cull time series (year 1..years)
     cull_class_all_draws: list[pd.DataFrame] = []
 
     df_cull_last_draw = None
@@ -183,7 +183,7 @@ def run_scenario(
                 .to_numpy(dtype=float)
             )
 
-            # NEW: per-class realised cull (30 series)
+            # per-class realised cull (30 series)
             missing = [c for c in class_cols if c not in tmp.columns]
             if missing:
                 raise KeyError(

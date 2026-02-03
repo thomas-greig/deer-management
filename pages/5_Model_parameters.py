@@ -20,7 +20,7 @@ SPECIES = list(getattr(model, "SPECIES", ["muntjac", "roe", "fallow"]))
 
 
 # =========================
-# FORMATTING HELPERS (robust to dict/tuple/list/scalar)
+# FORMATTING HELPERS 
 # =========================
 def _norm_key(k: str) -> str:
     return str(k).strip().lower().replace(" ", "").replace("-", "").replace("_", "")
@@ -142,7 +142,7 @@ st.markdown("---")
 # =========================
 # Pull live values
 # =========================
-# NOTE: If you have canonical UI defaults elsewhere, wire them in here.
+
 years_default = 10
 cull_intensity_default = 0.7
 rho_default = 0.30
@@ -190,7 +190,7 @@ def _cost_tuple_or_raw(sp: str):
 
 
 # =========================
-# Display: clear sections mirroring LaTeX structure
+# Display
 # =========================
 st.subheader("Management-defined parameters (configurable; defaults shown)")
 mgmt_rows = [

@@ -16,7 +16,7 @@ st.set_page_config(page_title="Model description", layout="wide")
 st.title("Model description")
 
 # -------------------------
-# Model description (Markdown + KaTeX-friendly math)
+# Model description 
 # -------------------------
 
 st.markdown(

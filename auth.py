@@ -15,7 +15,7 @@ def require_password():
     st.title("This app is password-protected")
     pw = st.text_input("Password", type="password")
 
-    # Don't leak timing info; use hmac.compare_digest
+
     if pw:
         expected = st.secrets.get("APP_PASSWORD", "")
         if expected and hmac.compare_digest(pw, expected):

@@ -31,7 +31,7 @@ if "cmp_last_run" not in st.session_state:
 
 
 # -----------------------------
-# Overlay plot helpers (kept as-is)
+# Overlay plot helpers 
 # -----------------------------
 def fig_overlay_with_band(year, series_list, title: str, y_label: str) -> plt.Figure:
     fig, ax = plt.subplots()
@@ -623,7 +623,7 @@ if st.session_state["cmp_last_run"] is not None:
             )
 
     # -----------------------------
-    # Score decomposition (collapsible, at bottom)
+    # Score decomposition (collapsible)
     # -----------------------------
     st.markdown("---")
     with st.expander("Score decomposition (advanced)", expanded=False):

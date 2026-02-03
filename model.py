@@ -3,13 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-# ============================================================
-# OPTIMAL DEER MANAGEMENT — STREAMLIT-READY MODULE
-# + Policies (user-specified fixed weights)
-# + Density-dependent adult survival via beta_s_adult
-# + NEW: Cull intensity parameter (scales annual desire)
-# ============================================================
-
 SPECIES = ["muntjac", "roe", "fallow"]
 
 STATE_LABELS = [
@@ -685,7 +678,7 @@ def draw_biology_ensemble(
 
 
 # -----------------------
-# POLICIES (RENAMED KEYS, SAME WEIGHTS)
+# POLICIES 
 # -----------------------
 def policy_from_group_weights(*, F0=0.0, M0=0.0, F1=0.0, M1=0.0, F_adult=0.0, M_adult=0.0) -> np.ndarray:
     w = np.zeros(10, dtype=float)

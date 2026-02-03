@@ -206,7 +206,7 @@ with ccol3:
 
 
 # -----------------------------
-# Score weighting (as before, but compact)
+# Score weighting 
 # -----------------------------
 sk = defaults["score_kwargs"]
 
@@ -647,7 +647,7 @@ else:
                 )
 
     # -----------------------------
-    # Best strategy plots (requested)
+    # Best strategy plots 
     # -----------------------------
     st.markdown("---")
     st.subheader("Best strategy — plots")
@@ -655,7 +655,7 @@ else:
     year_tot = best["totals_stats"]["year"]
     year_flow = best["cull_stats"]["year"]
 
-    # 4) Best strategy plots: all-species total abundance, total realised cull, total cost
+
     st.pyplot(
         fig_series_with_band(
             year_tot,
@@ -688,7 +688,7 @@ else:
         )
     )
 
-    # 5) Move all-species total abundance split by species into best strategy plots
+
     st.pyplot(
         fig_stacked_species_totals(
             year_tot,
@@ -699,7 +699,7 @@ else:
         )
     )
 
-    # 6) Group species abundance + class split + class abundance under one species selector
+
     st.markdown("### Species detail")
     sp_detail = st.selectbox(
         "Species (detail plots)",
